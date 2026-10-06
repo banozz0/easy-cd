@@ -33,6 +33,15 @@ func newHome(t *testing.T, dirs ...string) string {
 	return home
 }
 
+// newPicker runs picker.New(dir) under teatest. Its cleanup waits for the
+// index refresh, which outlives the program, before the temp dirs go.
+func newPicker(t *testing.T, dir string) *teatest.TestModel {
+	t.Helper()
+	m := picker.New(dir)
+	t.Cleanup(func() { picker.WaitRefresh(m) })
+	return teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+}
+
 var (
 	up    = tea.KeyMsg{Type: tea.KeyUp}
 	down  = tea.KeyMsg{Type: tea.KeyDown}
@@ -63,7 +72,7 @@ func stateFile(home, name string) string {
 // on stdout and its exit code.
 func run(t *testing.T, dir string, keys ...tea.KeyMsg) (string, int) {
 	t.Helper()
-	tm := teatest.NewTestModel(t, picker.New(dir), teatest.WithInitialTermSize(80, 24))
+	tm := newPicker(t, dir)
 	for _, k := range keys {
 		tm.Send(k)
 	}
@@ -94,7 +103,7 @@ func TestEscPrintsNothingAndFails(t *testing.T) {
 
 func TestBreadcrumbShowsWhereYouAre(t *testing.T) {
 	home := newHome(t, "a/b/c")
-	tm := teatest.NewTestModel(t, picker.New(home), teatest.WithInitialTermSize(80, 24))
+	tm := newPicker(t, home)
 
 	tm.Send(right)
 	tm.Send(right)
@@ -167,7 +176,7 @@ func TestCtrlPPinsTheHighlightedFolderOnSlotOne(t *testing.T) {
 func TestDigitAfterALetterIsSearchText(t *testing.T) {
 	home := newHome(t, "a", "b")
 	run(t, home, down, pin, esc) // slot 1 holds b
-	tm := teatest.NewTestModel(t, picker.New(home), teatest.WithInitialTermSize(80, 24))
+	tm := newPicker(t, home)
 
 	for _, k := range typed("a1") {
 		tm.Send(k)
@@ -187,7 +196,7 @@ func TestDigitAfterALetterIsSearchText(t *testing.T) {
 
 func TestFourthPinIsRefusedWithANotice(t *testing.T) {
 	home := newHome(t, "a", "b", "c", "d")
-	tm := teatest.NewTestModel(t, picker.New(home), teatest.WithInitialTermSize(80, 24))
+	tm := newPicker(t, home)
 
 	for _, k := range []tea.KeyMsg{pin, down, pin, down, pin, down, pin} {
 		tm.Send(k)
@@ -211,7 +220,7 @@ func TestListScrollsToKeepTheHighlightOnScreen(t *testing.T) {
 		names = append(names, fmt.Sprintf("list/f%02d", i))
 	}
 	home := newHome(t, names...)
-	tm := teatest.NewTestModel(t, picker.New(filepath.Join(home, "list")), teatest.WithInitialTermSize(80, 24))
+	tm := newPicker(t, filepath.Join(home, "list"))
 
 	for range 39 {
 		tm.Send(down)

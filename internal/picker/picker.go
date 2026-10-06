@@ -180,9 +180,11 @@ func (m model) update(msg tea.Msg) (model, tea.Cmd) {
 		m.height = msg.Height
 	case indexMsg:
 		m.index, m.indexed = m.refresh.folders, true
-		cursor := m.cursor
-		m = m.searched(m.query)
-		m.cursor = min(cursor, max(m.rows()-1, 0))
+		if m.query != "" {
+			was := m.highlighted()
+			m = m.searched(m.query)
+			m.cursor = max(slices.IndexFunc(m.results, func(r match) bool { return r.path == was }), 0)
+		}
 	case tea.KeyMsg:
 		m.notice = ""
 		return m.key(msg)
@@ -355,15 +357,11 @@ func breadcrumb(dir string) string {
 
 // Finish writes the picked folder to stdout, logs it as a visit and returns
 // the exit code: 0 when a folder was picked, 1 when the picker was left with
-// Esc. It first waits for the index refresh to reach the cache, which a
-// quick pick would otherwise cut short.
+// Esc. A refresh still scanning dies with the process; the next open
+// refreshes again.
 func Finish(final tea.Model, stdout io.Writer) int {
 	m, ok := final.(model)
-	if !ok {
-		return 1
-	}
-	<-m.refresh.done
-	if m.picked == "" {
+	if !ok || m.picked == "" {
 		return 1
 	}
 	recordVisit(m.picked)

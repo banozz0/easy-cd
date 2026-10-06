@@ -41,24 +41,23 @@ type index struct {
 // loadIndex returns the cached folder index plus extra, and starts the
 // refresh, whose folders also end with extra.
 func loadIndex(extra []string) ([]string, *index) {
-	data, _ := os.ReadFile(cacheFile())
+	// Paths are fixed now: the refresh may outlive whoever set HOME.
+	home, _ := os.UserHomeDir()
+	file := cacheFile()
+	data, _ := os.ReadFile(file)
 	cached := slices.DeleteFunc(strings.Split(string(data), "\n"), func(s string) bool { return s == "" })
 	ix := &index{done: make(chan struct{})}
 	go func() {
 		defer close(ix.done)
-		found := scan()
-		saveIndex(found)
+		found := scan(home)
+		saveIndex(file, found)
 		ix.folders = union(found, extra)
 	}()
 	return union(cached, extra), ix
 }
 
 // scan lists the folders under home, indexDepth levels deep.
-func scan() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
+func scan(home string) []string {
 	var folders []string
 	filepath.WalkDir(home, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || path == home {
@@ -71,7 +70,7 @@ func scan() []string {
 			return filepath.SkipDir
 		}
 		folders = append(folders, path)
-		if levels(path) >= indexDepth {
+		if levels(path, home) >= indexDepth {
 			return filepath.SkipDir
 		}
 		return nil
@@ -81,8 +80,7 @@ func scan() []string {
 
 // saveIndex writes folders to the cache through a temp file, so a picker
 // opening meanwhile never reads half an index.
-func saveIndex(folders []string) {
-	file := cacheFile()
+func saveIndex(file string, folders []string) {
 	if os.MkdirAll(filepath.Dir(file), 0o755) != nil {
 		return
 	}
@@ -114,6 +112,7 @@ const maxResults = 30
 // matches show only when fewer than 5 real ones exist.
 func search(query, dir string, folders []string, bonus map[string]int) []match {
 	q := []rune(strings.ToLower(query))
+	home, _ := os.UserHomeDir()
 	var real, fuzzy []match
 	for _, path := range folders {
 		name := []rune(strings.Map(unicode.ToLower, filepath.Base(path)))
@@ -131,7 +130,7 @@ func search(query, dir string, folders []string, bonus map[string]int) []match {
 			}
 			m.score, loose = 100, true
 		}
-		m.score += bonus[path] - 12*levels(path)
+		m.score += bonus[path] - 12*levels(path, home)
 		if rel, err := filepath.Rel(dir, path); err == nil && rel != "." && filepath.IsLocal(rel) {
 			if strings.ContainsRune(rel, filepath.Separator) {
 				m.score += 40
@@ -156,8 +155,8 @@ func search(query, dir string, folders []string, bonus map[string]int) []match {
 
 // levels is how deep path sits: counted from home when under it, from /
 // otherwise.
-func levels(path string) int {
-	if rel, ok := fromHome(path); ok {
+func levels(path, home string) int {
+	if rel, err := filepath.Rel(home, path); err == nil && filepath.IsLocal(rel) {
 		path = rel
 	}
 	return len(strings.FieldsFunc(path, func(r rune) bool { return r == filepath.Separator }))

@@ -10,24 +10,29 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/muesli/termenv"
 
 	"github.com/banozz0/easy-cd/internal/picker"
 )
 
 // searched starts the picker in dir, types query, waits until the terminal
-// shows want, and presses Enter. It returns the last screen and what ecd
-// printed on stdout.
-func searched(t *testing.T, dir, query, want string) (screen, stdout string) {
+// shows want, then presses keys and Enter. It returns the last screen and
+// what ecd printed on stdout.
+func searched(t *testing.T, dir, query, want string, keys ...tea.KeyMsg) (screen, stdout string) {
 	t.Helper()
-	tm := teatest.NewTestModel(t, picker.New(dir), teatest.WithInitialTermSize(80, 24))
+	tm := newPicker(t, dir)
 	for _, k := range typed(query) {
 		tm.Send(k)
 	}
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte(want))
 	}, teatest.WithDuration(5*time.Second))
-	tm.Send(enter)
+	for _, k := range append(keys, enter) {
+		tm.Send(k)
+	}
 	final := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second))
 	var out bytes.Buffer
 	picker.Finish(final, &out)
@@ -103,7 +108,7 @@ func TestSearchSkipsJunkButFindsLoggedFoldersAtAnyDepth(t *testing.T) {
 
 func TestBackspaceEditsTheSearchAndEscClearsItBeforeQuitting(t *testing.T) {
 	home := newHome(t, "alpha", "beta")
-	tm := teatest.NewTestModel(t, picker.New(home), teatest.WithInitialTermSize(80, 24))
+	tm := newPicker(t, home)
 	shows := func(want string) {
 		t.Helper()
 		teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -136,7 +141,13 @@ func TestCacheHoldsFolderPathsOnly(t *testing.T) {
 
 	run(t, home, esc)
 
-	cache, err := os.ReadFile(filepath.Join(filepath.Dir(home), "cache", "ecd", "folders"))
+	// The refresh writes the cache in the background; it lands whole.
+	file := filepath.Join(os.Getenv("XDG_CACHE_HOME"), "ecd", "folders")
+	cache, err := os.ReadFile(file)
+	for deadline := time.Now().Add(5 * time.Second); os.IsNotExist(err) && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+		cache, err = os.ReadFile(file)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,5 +161,54 @@ func TestCacheHoldsFolderPathsOnly(t *testing.T) {
 	slices.Sort(got)
 	if want := []string{"code", "code/app", "notes"}; !slices.Equal(got, want) {
 		t.Fatalf("cache holds %q, want %q", got, want)
+	}
+}
+
+func TestSearchRanksTheCurrentFolderFirstThenShallowerFolders(t *testing.T) {
+	home := newHome(t, "x/proj", "x/b/c/proj", "y/proj", "y/a/proj")
+
+	screen, _ := searched(t, filepath.Join(home, "y"), "proj", "~/x/b/c/proj")
+
+	r := rows(screen)
+	var at []int
+	for _, row := range []string{"~/y/proj", "~/y/a/proj", "~/x/proj", "~/x/b/c/proj"} {
+		at = append(at, slices.Index(r, row))
+	}
+	if at[0] < 0 || !slices.IsSorted(at) {
+		t.Fatalf("want ~/y/proj, ~/y/a/proj, ~/x/proj, ~/x/b/c/proj in that order, screen:\n%s", screen)
+	}
+}
+
+func TestVisitsLiftASearchResult(t *testing.T) {
+	home := newHome(t, "p/code", "q/code")
+	run(t, filepath.Join(home, "q", "code"), enter)
+
+	_, out := searched(t, home, "code", "~/p/code")
+
+	if want := filepath.Join(home, "q", "code") + "\n"; out != want {
+		t.Fatalf("Enter on the top result printed %q, want the visited %q", out, want)
+	}
+}
+
+func TestRightBrowsesIntoASearchResult(t *testing.T) {
+	home := newHome(t, "q/code/inner")
+
+	_, out := searched(t, home, "code", "~/q/code", right)
+
+	if want := filepath.Join(home, "q", "code", "inner") + "\n"; out != want {
+		t.Fatalf("stdout %q, want %q", out, want)
+	}
+}
+
+func TestSearchHighlightsMatchedLettersAndDimsTheParent(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.ANSI)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	home := newHome(t, "work/my-code")
+
+	screen, _ := searched(t, home, "code", "my-")
+
+	// faint ~/work/, plain my-, bold blue code
+	if want := "\x1b[2m~/work/\x1b[0mmy-\x1b[1;34mcode\x1b[0m"; !strings.Contains(screen, want) {
+		t.Fatalf("screen lacks %q:\n%q", want, screen)
 	}
 }
