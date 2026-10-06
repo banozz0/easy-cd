@@ -3,9 +3,9 @@ package picker_test
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -205,10 +205,10 @@ func TestFourthPinIsRefusedWithANotice(t *testing.T) {
 func TestListScrollsToKeepTheHighlightOnScreen(t *testing.T) {
 	var names []string
 	for i := range 40 {
-		names = append(names, fmt.Sprintf("f%02d", i))
+		names = append(names, fmt.Sprintf("list/f%02d", i))
 	}
 	home := newHome(t, names...)
-	tm := teatest.NewTestModel(t, picker.New(home), teatest.WithInitialTermSize(80, 24))
+	tm := teatest.NewTestModel(t, picker.New(filepath.Join(home, "list")), teatest.WithInitialTermSize(80, 24))
 
 	for range 39 {
 		tm.Send(down)
@@ -216,13 +216,22 @@ func TestListScrollsToKeepTheHighlightOnScreen(t *testing.T) {
 	tm.Send(enter)
 
 	final := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second))
-	screen := strings.Split(strings.TrimSuffix(final.View(), "\n"), "\n")
-	if len(screen) > 24 || screen[0] != "  ~" || !slices.Contains(screen, "▸ f39") {
-		t.Fatalf("screen of %d lines, want at most 24 with the breadcrumb on top and f39 highlighted:\n%s", len(screen), strings.Join(screen, "\n"))
+	// Bubble Tea splits the view on newlines and drops lines off the top past
+	// the terminal height, so the breadcrumb only reaches the terminal when
+	// the view fits.
+	screen, err := io.ReadAll(tm.FinalOutput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(screen, []byte("~ › list")) || !bytes.Contains(screen, []byte("▸ f39")) {
+		t.Fatalf("terminal output lacks the breadcrumb or the highlighted f39:\n%s", screen)
+	}
+	if rows := strings.Split(final.View(), "\n"); len(rows) > 24 {
+		t.Fatalf("view is %d rows on a 24-row terminal", len(rows))
 	}
 	var stdout bytes.Buffer
 	picker.Finish(final, &stdout)
-	if want := filepath.Join(home, "f39") + "\n"; stdout.String() != want {
+	if want := filepath.Join(home, "list", "f39") + "\n"; stdout.String() != want {
 		t.Fatalf("stdout %q, want %q", stdout.String(), want)
 	}
 }

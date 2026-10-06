@@ -175,12 +175,13 @@ func (m model) scrolled() model {
 	return m
 }
 
-// listRows is how many folders fit under header.
+// listRows is how many folders fit under header. The view ends in a newline,
+// and the empty line after it takes the terminal's last row.
 func (m model) listRows(header string) int {
 	if m.height == 0 {
 		return len(m.folders)
 	}
-	return max(m.height-strings.Count(header, "\n"), 1)
+	return max(m.height-strings.Count(header, "\n")-1, 1)
 }
 
 func (m model) View() string {
