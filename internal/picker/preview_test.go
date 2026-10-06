@@ -23,6 +23,18 @@ func writeFile(t *testing.T, dir, name, data string) {
 	}
 }
 
+// writeScript writes an executable shell script named name under dir and
+// returns its path.
+func writeScript(t *testing.T, dir, name, script string) string {
+	t.Helper()
+	writeFile(t, dir, name, "#!/bin/sh\n"+script)
+	path := filepath.Join(dir, name)
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // previewed starts the picker in dir, presses keys, waits until the terminal
 // shows want, quits with Esc and returns the last screen.
 func previewed(t *testing.T, dir, want string, keys ...tea.KeyMsg) string {

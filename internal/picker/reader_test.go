@@ -85,11 +85,7 @@ func stubOpener(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	record := filepath.Join(dir, "opened")
-	writeFile(t, dir, "open", "#!/bin/sh\nprintf '%s' \"$1\" > '"+record+"'\n")
-	if err := os.Chmod(filepath.Join(dir, "open"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("ECD_OPENER", filepath.Join(dir, "open"))
+	t.Setenv("ECD_OPENER", writeScript(t, dir, "open", "printf '%s' \"$1\" > '"+record+"'\n"))
 	return record
 }
 

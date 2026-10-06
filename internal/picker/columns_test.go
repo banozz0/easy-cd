@@ -40,7 +40,7 @@ func waitColumns(t *testing.T, tm *teatest.TestModel) {
 }
 
 // firstRow is the first row of the columns, one cell per column, highlight
-// marker and padding removed, empty cells dropped.
+// marker, padding and badges removed, empty cells dropped.
 func firstRow(t *testing.T, screen string) []string {
 	t.Helper()
 	for _, line := range strings.Split(screen, "\n") {
@@ -49,7 +49,7 @@ func firstRow(t *testing.T, screen string) []string {
 		}
 		var cells []string
 		for _, c := range strings.Split(line, "│") {
-			if c = strings.TrimLeft(strings.TrimSpace(c), "▸ "); c != "" {
+			if c = name(strings.TrimSpace(c)); c != "" {
 				cells = append(cells, c)
 			}
 		}
@@ -101,7 +101,7 @@ func TestTabTwiceBringsTheListBackWithTheSameHighlight(t *testing.T) {
 	tm.Send(enter)
 
 	final := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second))
-	if screen := final.View(); strings.Contains(screen, "│") || !strings.Contains(screen, "▸ b\n") {
+	if screen := final.View(); strings.Contains(screen, "│") || !strings.HasPrefix(row(screen, "b"), "▸") {
 		t.Fatalf("want the list with b highlighted, screen:\n%s", screen)
 	}
 	var stdout bytes.Buffer

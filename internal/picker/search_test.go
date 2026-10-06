@@ -37,13 +37,21 @@ func searched(t *testing.T, dir, query, want string, keys ...tea.KeyMsg) (screen
 	return final.View(), out.String()
 }
 
-// rows are the screen's lines with the highlight marker and indent removed.
+// rows are the screen's lines with the highlight marker, indent and the
+// badges after the name removed.
 func rows(screen string) []string {
 	lines := strings.Split(screen, "\n")
 	for i, l := range lines {
-		lines[i] = strings.TrimLeft(l, "▸ ")
+		lines[i] = name(l)
 	}
 	return lines
+}
+
+// name is a row's name: the cell without its highlight marker, indent and
+// the badges two spaces after it.
+func name(cell string) string {
+	name, _, _ := strings.Cut(strings.TrimLeft(cell, "▸ "), "  ")
+	return name
 }
 
 func TestSearchRanksExactNameFirstThenStartsWithThenContains(t *testing.T) {

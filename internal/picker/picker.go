@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"iter"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,12 +34,13 @@ type model struct {
 	index   []string // folders searched: the folder index plus logged
 	indexed bool     // whether the background index refresh has landed
 	refresh *index
-	bonus   map[string]int // search bonus of visited folders
-	notice  string         // one-off message shown until the next key
-	preview preview        // the highlighted file's start, read when highlighted
-	reader  reader         // the file open full screen, Right on a file
-	picked  string         // absolute path landed on, empty on Esc
-	opened  string         // file to open in its default app on the way out
+	bonus   map[string]int  // search bonus of visited folders
+	notice  string          // one-off message shown until the next key
+	preview preview         // the highlighted file's start, read when highlighted
+	reader  reader          // the file open full screen, Right on a file
+	repos   map[string]repo // git badges of folders shown so far, by path
+	picked  string          // absolute path landed on, empty on Esc
+	opened  string          // file to open in its default app on the way out
 }
 
 const (
@@ -49,7 +51,7 @@ const (
 // New returns a picker listing the folders of dir.
 func New(dir string) tea.Model {
 	score := frecency()
-	m := model{pins: loadPins(), logged: visited(score), bonus: map[string]int{}}
+	m := model{pins: loadPins(), logged: visited(score), bonus: map[string]int{}, repos: map[string]repo{}}
 	for dir, s := range score {
 		m.bonus[dir] = min(int(10*s), maxBonus)
 	}
@@ -152,7 +154,15 @@ func (m model) highlighted() string {
 	if m.rows() == 0 {
 		return m.dir
 	}
-	return filepath.Join(m.dir, m.entry(m.cursor))
+	return m.rowPath(m.cursor)
+}
+
+// rowPath is the absolute path on row i: a search result, or an entry of dir.
+func (m model) rowPath(i int) string {
+	if m.query != "" {
+		return m.results[i].path
+	}
+	return filepath.Join(m.dir, m.entry(i))
 }
 
 // entry is the name on row i of dir's list: folders first, then files.
@@ -209,7 +219,7 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m, cmd := m.update(msg)
 	m, read := m.scrolled().previewed()
-	return m, tea.Batch(cmd, read)
+	return m, tea.Batch(cmd, read, m.badged())
 }
 
 // previewed starts reading the highlighted file in the background when the
@@ -235,6 +245,8 @@ func (m model) update(msg tea.Msg) (model, tea.Cmd) {
 		if msg.path == m.preview.path { // the highlight may have moved on
 			m.preview = msg
 		}
+	case repo:
+		m.repos[msg.path] = msg
 	case readMsg:
 		if msg.path == m.reader.file.path { // the reader may have closed
 			m.reader.file = preview(msg)
@@ -383,22 +395,36 @@ func (m model) View() string {
 // dimmed files otherwise.
 func (m model) window(rows int) []string {
 	var lines []string
-	for i := m.offset; i < min(m.offset+rows, m.rows()); i++ {
+	for i := range m.shown(rows) {
 		marker := "  "
 		if i == m.cursor {
 			marker = "▸ "
 		}
-		if m.query != "" {
-			lines = append(lines, marker+m.results[i].render())
-			continue
+		var name string
+		switch {
+		case m.query != "":
+			name = m.results[i].render()
+		case i < len(m.folders):
+			name = m.entry(i)
+		default:
+			name = dim.Render(m.entry(i))
 		}
-		name := m.entry(i)
-		if i >= len(m.folders) {
-			name = dim.Render(name)
-		}
-		lines = append(lines, marker+name)
+		path := m.rowPath(i)
+		parts := slices.DeleteFunc([]string{name, m.repos[path].badge(), age(path)}, func(s string) bool { return s == "" })
+		lines = append(lines, marker+strings.Join(parts, "  "))
 	}
 	return lines
+}
+
+// shown is the rows on screen, rows at most from offset.
+func (m model) shown(rows int) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		for i := m.offset; i < min(m.offset+rows, m.rows()); i++ {
+			if !yield(i) {
+				return
+			}
+		}
+	}
 }
 
 var (
