@@ -12,7 +12,10 @@ cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fis
   search built (folder index cached under XDG_CACHE_HOME/ecd, spec ranking, Backspace/Esc);
   columns built (Tab toggles, trail folds past 4 levels, Shift+← home); file preview built
   (files dimmed after folders, first 64 KB read in the background when highlighted, beside the
-  list and in the preview column, notice for binary, over 10 MB or non-regular files).
+  list and in the preview column, notice for binary, over 10 MB or non-regular files); file
+  reader built (Right reads the whole file, chroma colour under 512 KB, arrows and page keys
+  scroll, Left or Esc back; Enter on a file opens it in its default app and the shell lands in
+  its folder).
 - Code: `cmd/ecd` (binary, shell init), `internal/picker` (Bubble Tea model). Test with
   `go test ./...`; the shell seam needs zsh on PATH.
 

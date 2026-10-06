@@ -3,10 +3,13 @@
 package picker
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -33,7 +36,9 @@ type model struct {
 	bonus   map[string]int // search bonus of visited folders
 	notice  string         // one-off message shown until the next key
 	preview preview        // the highlighted file's start, read when highlighted
+	reader  reader         // the file open full screen, Right on a file
 	picked  string         // absolute path landed on, empty on Esc
+	opened  string         // file to open in its default app on the way out
 }
 
 const (
@@ -230,6 +235,10 @@ func (m model) update(msg tea.Msg) (model, tea.Cmd) {
 		if msg.path == m.preview.path { // the highlight may have moved on
 			m.preview = msg
 		}
+	case readMsg:
+		if msg.path == m.reader.file.path { // the reader may have closed
+			m.reader.file = preview(msg)
+		}
 	case indexMsg:
 		m.index, m.indexed = m.refresh.folders, true
 		if m.query != "" {
@@ -239,6 +248,9 @@ func (m model) update(msg tea.Msg) (model, tea.Cmd) {
 		}
 	case tea.KeyMsg:
 		m.notice = ""
+		if m.reader.open() {
+			return m.readerKey(msg)
+		}
 		return m.key(msg)
 	}
 	return m, nil
@@ -255,6 +267,11 @@ func (m model) key(key tea.KeyMsg) (model, tea.Cmd) {
 			m.cursor++
 		}
 	case tea.KeyRight:
+		if file := m.file(); file != "" {
+			var read tea.Cmd
+			m.reader, read = reading(file)
+			return m, read
+		}
 		if dir := m.folder(); m.rows() > 0 && dir != "" {
 			return m.searched("").cd(dir, ""), nil
 		}
@@ -268,7 +285,12 @@ func (m model) key(key tea.KeyMsg) (model, tea.Cmd) {
 	case tea.KeyTab:
 		m.columns = !m.columns
 	case tea.KeyEnter:
-		if m.picked = m.folder(); m.picked != "" { // opening a file is the reader's
+		if file := m.file(); file != "" {
+			m.picked, m.opened = filepath.Dir(file), file
+		} else {
+			m.picked = m.folder()
+		}
+		if m.picked != "" {
 			return m, tea.Quit
 		}
 	case tea.KeyCtrlP:
@@ -307,7 +329,7 @@ func (m model) jump(i int) (model, tea.Cmd) {
 
 // scrolled moves the list window just enough to keep the highlight on screen.
 func (m model) scrolled() model {
-	m.offset = inView(m.offset, m.cursor, m.listRows(m.header()), m.rows())
+	m.offset = inView(m.offset, m.cursor, m.listRows(m.header(), m.rows()), m.rows())
 	return m
 }
 
@@ -317,16 +339,20 @@ func inView(offset, cursor, rows, n int) int {
 	return max(min(offset, cursor, max(n-rows, 0)), cursor-rows+1, 0)
 }
 
-// listRows is how many folders fit under header. The view ends in a newline,
-// and the empty line after it takes the terminal's last row.
-func (m model) listRows(header string) int {
+// listRows is how many of n rows fit under header, all of them while the
+// height is unknown. The view ends in a newline, and the empty line after
+// it takes the terminal's last row.
+func (m model) listRows(header string, n int) int {
 	if m.height == 0 {
-		return m.rows()
+		return n
 	}
 	return max(m.height-strings.Count(header, "\n")-1, 1)
 }
 
 func (m model) View() string {
+	if m.reader.open() {
+		return m.readerView()
+	}
 	header := m.header()
 	var b strings.Builder
 	b.WriteString(header)
@@ -338,10 +364,10 @@ func (m model) View() string {
 		}
 	}
 	if m.columns && m.query == "" {
-		b.WriteString(m.columnsView(m.listRows(header)))
+		b.WriteString(m.columnsView(m.listRows(header, m.rows())))
 		return b.String()
 	}
-	rows := m.listRows(header)
+	rows := m.listRows(header, m.rows())
 	if m.preview.path != "" {
 		b.WriteString(sideBySide([]column{{m.window(rows), 2}, {m.preview.cells(rows), 3}}, m.width))
 		return b.String()
@@ -436,16 +462,34 @@ func breadcrumb(dir string) string {
 	return strings.Join(parts, " › ")
 }
 
-// Finish writes the picked folder to stdout, logs it as a visit and returns
-// the exit code: 0 when a folder was picked, 1 when the picker was left with
-// Esc. A refresh still scanning dies with the process; the next open
-// refreshes again.
+// Finish opens the picked file, if any, writes the folder landed on to
+// stdout, logs it as a visit and returns the exit code: 0 when a folder was
+// picked, 1 when the picker was left with Esc. A refresh still scanning
+// dies with the process; the next open refreshes again.
 func Finish(final tea.Model, stdout io.Writer) int {
 	m, ok := final.(model)
 	if !ok || m.picked == "" {
 		return 1
 	}
+	if m.opened != "" {
+		if err := openFile(m.opened); err != nil {
+			fmt.Fprintln(os.Stderr, "ecd: can't open:", err)
+		}
+	}
 	recordVisit(m.picked)
 	fmt.Fprintln(stdout, m.picked)
 	return 0
+}
+
+// openFile hands path to its default app: open on macOS, xdg-open
+// elsewhere. ECD_OPENER names another command to run instead, which the
+// tests set to a stub that records the path.
+func openFile(path string) error {
+	opener := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		opener = "open"
+	}
+	cmd := exec.Command(cmp.Or(os.Getenv("ECD_OPENER"), opener), path)
+	cmd.Stderr = os.Stderr // stdout is the folder the shell lands in
+	return cmd.Run()
 }

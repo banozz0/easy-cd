@@ -124,15 +124,12 @@ func TestFilesListDimmedAfterFoldersAndStayUnreadUntilHighlighted(t *testing.T) 
 	tm.WaitFinished(t, teatest.WithFinalTimeout(5*time.Second))
 }
 
-func TestEnterRightAndPinDoNothingOnAFile(t *testing.T) {
+func TestPinDoesNothingOnAFile(t *testing.T) {
 	home := newHome(t, "docs")
 	writeFile(t, filepath.Join(home, "docs"), "plan.txt", "x\n")
 
-	out, code := run(t, filepath.Join(home, "docs"), enter, right, pin, enter, esc)
+	run(t, filepath.Join(home, "docs"), pin, esc)
 
-	if out != "" || code == 0 {
-		t.Fatalf("stdout %q exit %d, want empty and non-zero", out, code)
-	}
 	if _, err := os.Stat(stateFile(home, "pins")); !os.IsNotExist(err) {
 		t.Fatalf("pins file written for a file: %v", err)
 	}

@@ -26,10 +26,13 @@ type preview struct {
 	notice string
 }
 
-// peek reads the start of the file at path for the preview. It never opens
-// anything but a regular file under maxFile, so a pipe or device can't hang
-// the picker.
-func peek(path string) preview {
+// peek reads the start of the file at path for the preview.
+func peek(path string) preview { return readFile(path, previewBytes) }
+
+// readFile reads up to limit bytes of the file at path as printable lines.
+// It never opens anything but a regular file under maxFile, so a pipe or
+// device can't hang the picker.
+func readFile(path string, limit int64) preview {
 	fi, err := os.Stat(path)
 	switch {
 	case err != nil:
@@ -37,14 +40,14 @@ func peek(path string) preview {
 	case !fi.Mode().IsRegular():
 		return preview{path: path, notice: "not a regular file"}
 	case fi.Size() > maxFile:
-		return preview{path: path, notice: fmt.Sprintf("too large to preview: %d MB", fi.Size()>>20)}
+		return preview{path: path, notice: fmt.Sprintf("too large to show: %d MB", fi.Size()>>20)}
 	}
 	f, err := os.Open(path)
 	if err != nil {
 		return preview{path: path, notice: cantRead(err)}
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, previewBytes))
+	data, err := io.ReadAll(io.LimitReader(f, limit))
 	if err != nil {
 		return preview{path: path, notice: cantRead(err)}
 	}

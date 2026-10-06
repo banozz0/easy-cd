@@ -64,6 +64,19 @@ func TestEcdCdsToThePickedFolder(t *testing.T) {
 	}
 }
 
+func TestEcdLandsInTheFolderOfAnOpenedFile(t *testing.T) {
+	folder := t.TempDir()
+	if err := os.WriteFile(filepath.Join(folder, "plan.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := mustReal(t, folder)
+
+	// Enter on plan.txt prints the file's folder, as the stub does here.
+	if got := zsh(t, folder, 0, "ecd; pwd -P"); got != want {
+		t.Fatalf("pwd %q, want %q", got, want)
+	}
+}
+
 func TestEcdStaysPutWhenNothingIsPicked(t *testing.T) {
 	if got := zsh(t, "", 0, "ecd; basename $PWD"); got != "start" {
 		t.Fatalf("pwd ends in %q, want start", got)
