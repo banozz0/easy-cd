@@ -1,10 +1,10 @@
 # easy-cd — agent brief
 
-**Public repo** (MIT). `ecd` is a terminal folder picker: favourites and recent folders on
+**Private until the v1 release, then public** (MIT). `ecd` is a terminal folder picker: favourites and recent folders on
 top, arrow keys to walk, type to search everywhere, Tab for Finder-style columns, Enter to
 cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fish.
 
-- Shaping record and every decision: `~/code/incubator/easy-cd/IDEA.md`.
+- Shaping record and every decision: `easy-cd/IDEA.md` in the incubator repo.
 - Spec, dashboard and journal: vault `Projects/Easy CD/`. Read `ecd v1 spec.md` before
   touching code.
 - Status: graduated 2026-10-06; walking skeleton built (zsh init, list, arrows, Enter, Esc).
@@ -19,12 +19,12 @@ cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fis
   search only), Ctrl+P (pin) and Shift+← (home). Never bind a bare letter.
 - **Folder index only.** The cache holds folder names, never file contents; a file is read
   when highlighted, in full only in the reader.
-- **Public repo:** nothing from Sven's machine in git: no real paths, folder names, visit
+- **Goes public at release:** nothing from Sven's machine in git: no real paths, folder names, visit
   logs or screenshots of his home. Test fixtures build their own temp trees.
 
 ## Agent skills
 
-Issue tracker: the shared Beads board at `/Users/sven/code/agent-board`, every card tagged
+Issue tracker: the shared Beads board (`agent-board` repo), every card tagged
 `project:easy-cd`, written per canon `board-writing.md` (agents repo, `src/canon/`).
 Domain docs: single-context. Specs, plans and decision records go in the vault project
 folder, never in this repo (canon: repos carry no documents).
