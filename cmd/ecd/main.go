@@ -1,5 +1,5 @@
-// Command ecd is a terminal folder picker. `ecd init zsh` prints the shell
-// function that runs the picker and cds to the folder it prints.
+// Command ecd is a terminal folder picker. `ecd init <zsh|bash|fish>` prints
+// the shell function that runs the picker and cds to the folder it prints.
 package main
 
 import (
@@ -12,9 +12,22 @@ import (
 	"github.com/banozz0/easy-cd/internal/picker"
 )
 
-// zshInit defines the ecd function. With arguments it passes them to the
-// binary; bare, it runs the picker and cds only when a folder is printed.
-const zshInit = `ecd() {
+// inits are the ecd functions per shell. With arguments each passes them to
+// the binary; bare, it runs the picker and cds only when a folder is printed.
+// zsh and bash share one text, kept to what macOS's bash 3.2 runs. fish calls
+// its cd function rather than the builtin, so cd - and prevd still come back.
+var inits = map[string]string{
+	"zsh":  shInit,
+	"bash": shInit,
+	"fish": `function ecd
+  if set -q argv[1]; command ecd $argv; return; end
+  set -l dir (command ecd); or return
+  test -n "$dir"; and cd -- $dir
+end
+`,
+}
+
+const shInit = `ecd() {
   if (( $# )); then command ecd "$@"; return; fi
   local dir
   dir="$(command ecd)" || return
@@ -27,13 +40,16 @@ func main() {
 }
 
 func run(args []string) int {
-	if len(args) == 2 && args[0] == "init" && args[1] == "zsh" {
-		fmt.Print(zshInit)
+	if len(args) == 2 && args[0] == "init" && inits[args[1]] != "" {
+		fmt.Print(inits[args[1]])
 		return 0
 	}
 	if len(args) > 0 {
-		fmt.Fprintln(os.Stderr, `usage: ecd            pick a folder
-       ecd init zsh   print the shell function; add eval "$(ecd init zsh)" to ~/.zshrc`)
+		fmt.Fprintln(os.Stderr, `usage: ecd                       pick a folder
+       ecd init <zsh|bash|fish>  print the shell function, then add to your shell's config:
+                                   zsh   eval "$(ecd init zsh)"   in ~/.zshrc
+                                   bash  eval "$(ecd init bash)"  in ~/.bashrc
+                                   fish  ecd init fish | source   in ~/.config/fish/config.fish`)
 		return 2
 	}
 

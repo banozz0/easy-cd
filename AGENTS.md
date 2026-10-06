@@ -16,9 +16,10 @@ cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fis
   reader built (Right reads the whole file, chroma colour under 512 KB, arrows and page keys
   scroll, Left or Esc back; Enter on a file opens it in its default app and the shell lands in
   its folder); row badges built (every row ends in a dimmed age; repo rows show branch and a
-  dot for unsaved changes from a 2 s bounded async git call, cached for the session).
+  dot for unsaved changes from a 2 s bounded async git call, cached for the session); bash and fish
+  init built (bash shares zsh's text, kept to bash 3.2; fish calls its cd so cd - works).
 - Code: `cmd/ecd` (binary, shell init), `internal/picker` (Bubble Tea model). Test with
-  `go test ./...`; the shell seam needs zsh on PATH.
+  `go test ./...`; the shell seam runs zsh, /bin/bash and fish.
 
 ## Hard rules
 
