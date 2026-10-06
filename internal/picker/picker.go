@@ -20,6 +20,8 @@ type model struct {
 	cursor  int
 	offset  int      // first folder shown when the list is taller than the screen
 	height  int      // terminal rows, 0 until the first resize
+	width   int      // terminal columns, 0 until the first resize
+	columns bool     // Finder-style columns instead of the list
 	pins    []string // pinned folders, at most maxPins
 	query   string   // search text typed so far
 	results []match  // folders matching query, best first
@@ -177,7 +179,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) update(msg tea.Msg) (model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.height = msg.Height
+		m.height, m.width = msg.Height, msg.Width
 	case indexMsg:
 		m.index, m.indexed = m.refresh.folders, true
 		if m.query != "" {
@@ -210,6 +212,11 @@ func (m model) key(key tea.KeyMsg) (model, tea.Cmd) {
 		if parent := filepath.Dir(m.dir); m.query == "" && parent != m.dir {
 			return m.cd(parent, filepath.Base(m.dir)), nil
 		}
+	case tea.KeyShiftLeft:
+		home, _ := os.UserHomeDir()
+		return m.searched("").cd(home, ""), nil
+	case tea.KeyTab:
+		m.columns = !m.columns
 	case tea.KeyEnter:
 		if m.picked = m.highlighted(); m.picked != "" {
 			return m, tea.Quit
@@ -250,10 +257,14 @@ func (m model) jump(i int) (model, tea.Cmd) {
 
 // scrolled moves the list window just enough to keep the highlight on screen.
 func (m model) scrolled() model {
-	rows := m.listRows(m.header())
-	m.offset = min(m.offset, m.cursor, max(m.rows()-rows, 0))
-	m.offset = max(m.offset, m.cursor-rows+1)
+	m.offset = inView(m.offset, m.cursor, m.listRows(m.header()), m.rows())
 	return m
+}
+
+// inView is the first of n entries shown rows at a time, moved from offset
+// just enough to keep the entry at cursor on screen.
+func inView(offset, cursor, rows, n int) int {
+	return max(min(offset, cursor, max(n-rows, 0)), cursor-rows+1, 0)
 }
 
 // listRows is how many folders fit under header. The view ends in a newline,
@@ -276,19 +287,33 @@ func (m model) View() string {
 			b.WriteString("  indexing…\n")
 		}
 	}
-	end := min(m.offset+m.listRows(header), m.rows())
-	for i := m.offset; i < end; i++ {
+	if m.columns && m.query == "" {
+		b.WriteString(m.columnsView(m.listRows(header)))
+		return b.String()
+	}
+	for _, row := range m.window(m.listRows(header)) {
+		b.WriteString(row + "\n")
+	}
+	return b.String()
+}
+
+// window is the list rows on screen, rows at most from offset, the
+// highlighted one marked: search results while searching, subfolders
+// otherwise.
+func (m model) window(rows int) []string {
+	var lines []string
+	for i := m.offset; i < min(m.offset+rows, m.rows()); i++ {
 		marker := "  "
 		if i == m.cursor {
 			marker = "▸ "
 		}
 		if m.query != "" {
-			b.WriteString(marker + m.results[i].render() + "\n")
+			lines = append(lines, marker+m.results[i].render())
 		} else {
-			b.WriteString(marker + m.folders[i] + "\n")
+			lines = append(lines, marker+m.folders[i])
 		}
 	}
-	return b.String()
+	return lines
 }
 
 var (
@@ -341,16 +366,13 @@ func slotRow(label string, slots []string, first int) string {
 
 // breadcrumb renders dir as "~ › code › projects", with home shown as ~.
 func breadcrumb(dir string) string {
-	const sep = string(filepath.Separator)
-	head, rest := sep, dir
-	if rel, ok := fromHome(dir); ok {
-		head, rest = "~", rel
+	p := path(dir)
+	parts := []string{string(filepath.Separator)}
+	if _, ok := fromHome(dir); ok {
+		parts[0] = "~"
 	}
-	parts := []string{head}
-	for _, p := range strings.Split(rest, sep) {
-		if p != "" && p != "." {
-			parts = append(parts, p)
-		}
+	for _, d := range p[1:] {
+		parts = append(parts, filepath.Base(d))
 	}
 	return strings.Join(parts, " › ")
 }

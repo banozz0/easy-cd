@@ -9,7 +9,8 @@ cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fis
   touching code.
 - Status: graduated 2026-10-06; walking skeleton built (zsh init, list, arrows, Enter, Esc);
   jump slots built (visit log, frecency recents, Ctrl+P pins, 1–9, list scrolling);
-  search built (folder index cached under XDG_CACHE_HOME/ecd, spec ranking, Backspace/Esc).
+  search built (folder index cached under XDG_CACHE_HOME/ecd, spec ranking, Backspace/Esc);
+  columns built (Tab toggles, trail folds past 4 levels, empty preview column, Shift+← home).
 - Code: `cmd/ecd` (binary, shell init), `internal/picker` (Bubble Tea model). Test with
   `go test ./...`; the shell seam needs zsh on PATH.
 
