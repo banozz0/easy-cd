@@ -49,7 +49,7 @@ func path(dir string) []string {
 func trail(dir string, rows int) []column {
 	p := path(dir)
 	level := func(i, weight int) column {
-		names := subfolders(p[i])
+		names, _ := entries(p[i])
 		mark := slices.Index(names, filepath.Base(p[i+1]))
 		off := inView(0, mark, rows, len(names))
 		var cells []string
@@ -76,14 +76,18 @@ func trail(dir string, rows int) []column {
 const colSep = " │ "
 
 // columnsView renders up to rows rows of the trail, the current folder and
-// an empty preview column side by side. The current folder and the preview
-// weigh the most.
+// the preview column side by side. The current folder and the preview weigh
+// the most.
 func (m model) columnsView(rows int) string {
 	cols := trail(m.dir, rows)
 	weight := len(cols) + 4
-	cols = append(cols, column{m.window(rows), weight}, column{nil, weight})
+	return sideBySide(append(cols, column{m.window(rows), weight}, column{m.preview.cells(rows), weight}), m.width)
+}
 
-	free, sum := cmp.Or(m.width, 80)-(len(cols)-1)*ansi.StringWidth(colSep), 0
+// sideBySide lays cols out across width terminal columns (80 while it is
+// unknown), each taking its weight's share.
+func sideBySide(cols []column, width int) string {
+	free, sum := cmp.Or(width, 80)-(len(cols)-1)*ansi.StringWidth(colSep), 0
 	shown := 0
 	for _, c := range cols {
 		sum += c.weight

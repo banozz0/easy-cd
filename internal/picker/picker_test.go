@@ -54,6 +54,19 @@ var (
 	backspace = tea.KeyMsg{Type: tea.KeyBackspace}
 )
 
+// waitFor waits until the terminal has shown every one of want.
+func waitFor(t *testing.T, tm *teatest.TestModel, want ...string) {
+	t.Helper()
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		for _, w := range want {
+			if !bytes.Contains(out, []byte(w)) {
+				return false
+			}
+		}
+		return true
+	}, teatest.WithDuration(5*time.Second))
+}
+
 // typed is s typed on the keyboard, one key per character.
 func typed(s string) []tea.KeyMsg {
 	var keys []tea.KeyMsg
@@ -108,9 +121,7 @@ func TestBreadcrumbShowsWhereYouAre(t *testing.T) {
 	tm.Send(right)
 	tm.Send(right)
 
-	teatest.WaitFor(t, tm.Output(), func(screen []byte) bool {
-		return bytes.Contains(screen, []byte("~ › a › b"))
-	}, teatest.WithDuration(5*time.Second))
+	waitFor(t, tm, "~ › a › b")
 	tm.Send(esc)
 	tm.WaitFinished(t, teatest.WithFinalTimeout(5*time.Second))
 }
@@ -182,9 +193,7 @@ func TestDigitAfterALetterIsSearchText(t *testing.T) {
 		tm.Send(k)
 	}
 
-	teatest.WaitFor(t, tm.Output(), func(screen []byte) bool {
-		return bytes.Contains(screen, []byte("a1"))
-	}, teatest.WithDuration(5*time.Second))
+	waitFor(t, tm, "a1")
 	tm.Send(esc) // clears the search
 	tm.Send(esc)
 	var stdout bytes.Buffer
@@ -202,10 +211,7 @@ func TestFourthPinIsRefusedWithANotice(t *testing.T) {
 		tm.Send(k)
 	}
 
-	teatest.WaitFor(t, tm.Output(), func(screen []byte) bool {
-		return bytes.Contains(screen, []byte("★ pinned  1 a  2 b  3 c")) &&
-			bytes.Contains(screen, []byte("3 pins already"))
-	}, teatest.WithDuration(5*time.Second))
+	waitFor(t, tm, "★ pinned  1 a  2 b  3 c", "3 pins already")
 	tm.Send(esc)
 	tm.WaitFinished(t, teatest.WithFinalTimeout(5*time.Second))
 	pins, _ := os.ReadFile(stateFile(home, "pins"))

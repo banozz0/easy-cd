@@ -27,9 +27,7 @@ func searched(t *testing.T, dir, query, want string, keys ...tea.KeyMsg) (screen
 	for _, k := range typed(query) {
 		tm.Send(k)
 	}
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte(want))
-	}, teatest.WithDuration(5*time.Second))
+	waitFor(t, tm, want)
 	for _, k := range append(keys, enter) {
 		tm.Send(k)
 	}
@@ -109,21 +107,15 @@ func TestSearchSkipsJunkButFindsLoggedFoldersAtAnyDepth(t *testing.T) {
 func TestBackspaceEditsTheSearchAndEscClearsItBeforeQuitting(t *testing.T) {
 	home := newHome(t, "alpha", "beta")
 	tm := newPicker(t, home)
-	shows := func(want string) {
-		t.Helper()
-		teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-			return bytes.Contains(out, []byte(want))
-		}, teatest.WithDuration(5*time.Second))
-	}
 
 	for _, k := range typed("ax") {
 		tm.Send(k)
 	}
-	shows("no match")
+	waitFor(t, tm, "no match")
 	tm.Send(backspace)
-	shows("~/beta") // "a" matches both folders again
+	waitFor(t, tm, "~/beta") // "a" matches both folders again
 	tm.Send(esc)
-	shows("▸ alpha") // the folder list is back
+	waitFor(t, tm, "▸ alpha") // the folder list is back
 	tm.Send(esc)
 
 	var stdout bytes.Buffer
@@ -135,11 +127,10 @@ func TestBackspaceEditsTheSearchAndEscClearsItBeforeQuitting(t *testing.T) {
 
 func TestCacheHoldsFolderPathsOnly(t *testing.T) {
 	home := newHome(t, "code/app", "notes")
-	if err := os.WriteFile(filepath.Join(home, "notes", "todo.txt"), []byte("buy milk\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeFile(t, filepath.Join(home, "notes"), "todo.txt", "buy milk\n")
 
-	run(t, home, esc)
+	// Previewing todo.txt reads it; none of it may reach the cache.
+	previewed(t, filepath.Join(home, "notes"), "buy milk")
 
 	// The refresh writes the cache in the background; it lands whole.
 	file := filepath.Join(os.Getenv("XDG_CACHE_HOME"), "ecd", "folders")
@@ -153,7 +144,7 @@ func TestCacheHoldsFolderPathsOnly(t *testing.T) {
 	}
 	var got []string
 	for _, line := range strings.Split(strings.TrimSpace(string(cache)), "\n") {
-		if fi, err := os.Stat(line); err != nil || !fi.IsDir() || !filepath.IsAbs(line) {
+		if fi, err := os.Stat(line); err != nil || !fi.IsDir() || !filepath.IsAbs(line) || strings.Contains(line, "milk") {
 			t.Errorf("cache line %q is not a folder path", line)
 		}
 		got = append(got, strings.TrimPrefix(line, home+"/"))

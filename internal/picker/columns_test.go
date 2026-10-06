@@ -36,9 +36,7 @@ func inColumns(t *testing.T, dir string, keys ...tea.KeyMsg) string {
 // waitColumns waits until the terminal shows the columns view.
 func waitColumns(t *testing.T, tm *teatest.TestModel) {
 	t.Helper()
-	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("│"))
-	}, teatest.WithDuration(5*time.Second))
+	waitFor(t, tm, "│")
 }
 
 // firstRow is the first row of the columns, one cell per column, highlight

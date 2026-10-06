@@ -17,6 +17,7 @@ import (
 type model struct {
 	dir     string   // folder being listed
 	folders []string // names of its subfolders
+	files   []string // names of its other entries, listed after the folders
 	cursor  int
 	offset  int      // first folder shown when the list is taller than the screen
 	height  int      // terminal rows, 0 until the first resize
@@ -31,6 +32,7 @@ type model struct {
 	refresh *index
 	bonus   map[string]int // search bonus of visited folders
 	notice  string         // one-off message shown until the next key
+	preview preview        // the highlighted file's start, read when highlighted
 	picked  string         // absolute path landed on, empty on Esc
 }
 
@@ -89,7 +91,7 @@ func (m model) slots() [numSlots]string {
 // togglePin pins the highlighted folder, or unpins it when already pinned.
 // A pin past maxPins is refused with a notice rather than evicting one.
 func (m model) togglePin() model {
-	dir := m.highlighted()
+	dir := m.folder()
 	if dir == "" {
 		return m
 	}
@@ -112,26 +114,28 @@ func (m model) togglePin() model {
 
 // cd lists dir with the highlight on the folder named focus, or the first.
 func (m model) cd(dir, focus string) model {
-	m.dir, m.folders = dir, subfolders(dir)
+	m.dir = dir
+	m.folders, m.files = entries(dir)
 	m.cursor = max(slices.Index(m.folders, focus), 0)
 	return m
 }
 
-func subfolders(dir string) []string {
-	entries, _ := os.ReadDir(dir)
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
-		} else if e.Type()&os.ModeSymlink != 0 && isDir(filepath.Join(dir, e.Name())) {
-			names = append(names, e.Name())
+// entries are the names in dir: its subfolders, symlinks to folders
+// included, and everything else as files. Nothing is read but the names.
+func entries(dir string) (folders, files []string) {
+	list, _ := os.ReadDir(dir)
+	for _, e := range list {
+		if e.IsDir() || e.Type()&os.ModeSymlink != 0 && isDir(filepath.Join(dir, e.Name())) {
+			folders = append(folders, e.Name())
+		} else {
+			files = append(files, e.Name())
 		}
 	}
-	return names
+	return folders, files
 }
 
 // highlighted is the absolute path under the cursor: a search result, or
-// a subfolder of dir, or dir itself when it has none. It is empty when a
+// an entry of dir, or dir itself when it has none. It is empty when a
 // search matches nothing.
 func (m model) highlighted() string {
 	if m.query != "" {
@@ -140,19 +144,45 @@ func (m model) highlighted() string {
 		}
 		return m.results[m.cursor].path
 	}
-	if len(m.folders) == 0 {
+	if m.rows() == 0 {
 		return m.dir
 	}
-	return filepath.Join(m.dir, m.folders[m.cursor])
+	return filepath.Join(m.dir, m.entry(m.cursor))
+}
+
+// entry is the name on row i of dir's list: folders first, then files.
+func (m model) entry(i int) string {
+	if i < len(m.folders) {
+		return m.folders[i]
+	}
+	return m.files[i-len(m.folders)]
+}
+
+// file is the absolute path of the highlighted file, or empty when the
+// highlight is not on a file.
+func (m model) file() string {
+	if m.query != "" || m.cursor < len(m.folders) || m.cursor >= m.rows() {
+		return ""
+	}
+	return filepath.Join(m.dir, m.files[m.cursor-len(m.folders)])
+}
+
+// folder is highlighted unless the highlight is on a file, which the
+// folder keys leave alone.
+func (m model) folder() string {
+	if m.file() != "" {
+		return ""
+	}
+	return m.highlighted()
 }
 
 // rows is how many entries the list holds: results while searching,
-// subfolders otherwise.
+// folders and files otherwise.
 func (m model) rows() int {
 	if m.query != "" {
 		return len(m.results)
 	}
-	return len(m.folders)
+	return len(m.folders) + len(m.files)
 }
 
 // searched sets the query and reruns the search, highlight on the best.
@@ -173,13 +203,33 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m, cmd := m.update(msg)
-	return m.scrolled(), cmd
+	m, read := m.scrolled().previewed()
+	return m, tea.Batch(cmd, read)
+}
+
+// previewed starts reading the highlighted file in the background when the
+// highlight has just landed on it, so a slow disk never stalls the keys,
+// and drops the preview when the highlight is off files.
+func (m model) previewed() (model, tea.Cmd) {
+	file := m.file()
+	if file == m.preview.path {
+		return m, nil
+	}
+	m.preview = preview{path: file}
+	if file == "" {
+		return m, nil
+	}
+	return m, func() tea.Msg { return peek(file) }
 }
 
 func (m model) update(msg tea.Msg) (model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height, m.width = msg.Height, msg.Width
+	case preview:
+		if msg.path == m.preview.path { // the highlight may have moved on
+			m.preview = msg
+		}
 	case indexMsg:
 		m.index, m.indexed = m.refresh.folders, true
 		if m.query != "" {
@@ -205,7 +255,7 @@ func (m model) key(key tea.KeyMsg) (model, tea.Cmd) {
 			m.cursor++
 		}
 	case tea.KeyRight:
-		if dir := m.highlighted(); m.rows() > 0 {
+		if dir := m.folder(); m.rows() > 0 && dir != "" {
 			return m.searched("").cd(dir, ""), nil
 		}
 	case tea.KeyLeft:
@@ -218,7 +268,7 @@ func (m model) key(key tea.KeyMsg) (model, tea.Cmd) {
 	case tea.KeyTab:
 		m.columns = !m.columns
 	case tea.KeyEnter:
-		if m.picked = m.highlighted(); m.picked != "" {
+		if m.picked = m.folder(); m.picked != "" { // opening a file is the reader's
 			return m, tea.Quit
 		}
 	case tea.KeyCtrlP:
@@ -291,15 +341,20 @@ func (m model) View() string {
 		b.WriteString(m.columnsView(m.listRows(header)))
 		return b.String()
 	}
-	for _, row := range m.window(m.listRows(header)) {
+	rows := m.listRows(header)
+	if m.preview.path != "" {
+		b.WriteString(sideBySide([]column{{m.window(rows), 2}, {m.preview.cells(rows), 3}}, m.width))
+		return b.String()
+	}
+	for _, row := range m.window(rows) {
 		b.WriteString(row + "\n")
 	}
 	return b.String()
 }
 
 // window is the list rows on screen, rows at most from offset, the
-// highlighted one marked: search results while searching, subfolders
-// otherwise.
+// highlighted one marked: search results while searching, folders then
+// dimmed files otherwise.
 func (m model) window(rows int) []string {
 	var lines []string
 	for i := m.offset; i < min(m.offset+rows, m.rows()); i++ {
@@ -309,9 +364,13 @@ func (m model) window(rows int) []string {
 		}
 		if m.query != "" {
 			lines = append(lines, marker+m.results[i].render())
-		} else {
-			lines = append(lines, marker+m.folders[i])
+			continue
 		}
+		name := m.entry(i)
+		if i >= len(m.folders) {
+			name = dim.Render(name)
+		}
+		lines = append(lines, marker+name)
 	}
 	return lines
 }
