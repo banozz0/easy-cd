@@ -44,7 +44,10 @@ func peek(path string) preview {
 		return preview{path: path, notice: cantRead(err)}
 	}
 	defer f.Close()
-	data, _ := io.ReadAll(io.LimitReader(f, previewBytes))
+	data, err := io.ReadAll(io.LimitReader(f, previewBytes))
+	if err != nil {
+		return preview{path: path, notice: cantRead(err)}
+	}
 	if bytes.IndexByte(data, 0) >= 0 {
 		return preview{path: path, notice: "binary file"}
 	}
