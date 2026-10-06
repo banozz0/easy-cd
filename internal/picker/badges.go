@@ -92,7 +92,7 @@ func (m model) badged() tea.Cmd {
 	if m.height == 0 { // every row counts as on screen until the size lands
 		return nil
 	}
-	for i := range m.shown(m.listRows(m.header(), m.rows())) {
+	for i := range m.shown(m.listRows(m.chrome(), m.rows())) {
 		dir := m.rowPath(i)
 		if _, asked := m.repos[dir]; asked {
 			continue

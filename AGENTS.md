@@ -7,17 +7,15 @@ cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fis
 - Shaping record and every decision: `easy-cd/IDEA.md` in the incubator repo.
 - Spec, dashboard and journal: vault `Projects/Easy CD/`. Read `ecd v1 spec.md` before
   touching code.
-- Status: graduated 2026-10-06; walking skeleton built (zsh init, list, arrows, Enter, Esc);
-  jump slots built (visit log, frecency recents, Ctrl+P pins, 1–9, list scrolling);
-  search built (folder index cached under XDG_CACHE_HOME/ecd, spec ranking, Backspace/Esc);
-  columns built (Tab toggles, trail folds past 4 levels, Shift+← home); file preview built
-  (files dimmed after folders, first 64 KB read in the background when highlighted, beside the
-  list and in the preview column, notice for binary, over 10 MB or non-regular files); file
-  reader built (Right reads the whole file, chroma colour under 512 KB, arrows and page keys
-  scroll, Left or Esc back; Enter on a file opens it in its default app and the shell lands in
-  its folder); row badges built (every row ends in a dimmed age; repo rows show branch and a
-  dot for unsaved changes from a 2 s bounded async git call, cached for the session); bash and fish
-  init built (bash shares zsh's text, kept to bash 3.2; fish calls its cd so cd - works).
+- Status: graduated 2026-10-06; every v1 slice built: walking skeleton (zsh init, arrows,
+  Enter, Esc); jump slots (visit log trimmed past 5000 lines, frecency recents, Ctrl+P pins,
+  1–9); search (folder index cached under XDG_CACHE_HOME/ecd, spec ranking); columns (Tab
+  toggles, or opens them at the highlighted search result; trail folds past 4 levels; Shift+←
+  home); file preview (first 64 KB read in the background, notice for binary, over 10 MB or
+  non-regular files); file reader (Right; chroma colour under 512 KB; Enter opens a file in its
+  default app and lands in its folder); row badges (dimmed age, async git branch and dirty dot);
+  bash and fish init; final polish (Catppuccin Mocha theme, emoji icons, selection bar, key
+  help, rows cut to the width keeping badges, warm open under 100 ms tested through a pty).
 - Code: `cmd/ecd` (binary, shell init), `internal/picker` (Bubble Tea model). Test with
   `go test ./...`; the shell seam runs zsh, /bin/bash and fish.
 

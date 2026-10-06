@@ -349,7 +349,7 @@ func (m model) jump(i int) (model, tea.Cmd) {
 
 // scrolled moves the list window just enough to keep the highlight on screen.
 func (m model) scrolled() model {
-	m.offset = inView(m.offset, m.cursor, m.listRows(m.header(), m.rows()), m.rows())
+	m.offset = inView(m.offset, m.cursor, m.listRows(m.chrome(), m.rows()), m.rows())
 	return m
 }
 
@@ -359,23 +359,25 @@ func inView(offset, cursor, rows, n int) int {
 	return max(min(offset, cursor, max(n-rows, 0)), cursor-rows+1, 0)
 }
 
-// listRows is how many of n rows fit under header, all of them while the
-// height is unknown. The view ends in a newline, and the empty line after
-// it takes the terminal's last row.
-func (m model) listRows(header string, n int) int {
+// listRows is how many of n rows fit beside chrome, the lines around them,
+// all of them while the height is unknown. The view ends in a newline, and
+// the empty line after it takes the terminal's last row.
+func (m model) listRows(chrome string, n int) int {
 	if m.height == 0 {
 		return n
 	}
-	return max(m.height-strings.Count(header, "\n")-1, 1)
+	return max(m.height-strings.Count(chrome, "\n")-1, 1)
 }
+
+// chrome is the lines around the list: the header and the key help.
+func (m model) chrome() string { return m.header() + m.help() }
 
 func (m model) View() string {
 	if m.reader.open() {
 		return m.readerView()
 	}
-	header := m.header()
 	var b strings.Builder
-	b.WriteString(header)
+	b.WriteString(m.header())
 	if m.query != "" && len(m.results) == 0 {
 		if m.indexed {
 			b.WriteString("  no match\n")
@@ -383,19 +385,41 @@ func (m model) View() string {
 			b.WriteString("  indexing…\n")
 		}
 	}
-	if m.columns && m.query == "" {
-		b.WriteString(m.columnsView(m.listRows(header, m.rows())))
-		return b.String()
+	rows := m.listRows(m.chrome(), m.rows())
+	switch {
+	case m.columns && m.query == "":
+		b.WriteString(m.columnsView(rows))
+	case m.preview.path != "":
+		cols := []column{{weight: 2}, {m.preview.cells(rows), 3}}
+		cols[0].cells = m.window(rows, widths(cols, m.width)[0])
+		b.WriteString(sideBySide(cols, m.width))
+	default:
+		for _, row := range m.window(rows, m.width) {
+			b.WriteString(row + "\n")
+		}
 	}
-	rows := m.listRows(header, m.rows())
-	if m.preview.path != "" {
-		b.WriteString(sideBySide([]column{{m.window(rows, 0), 2}, {m.preview.cells(rows), 3}}, m.width))
-		return b.String()
-	}
-	for _, row := range m.window(rows, m.width) {
-		b.WriteString(row + "\n")
-	}
+	b.WriteString(m.help())
 	return b.String()
+}
+
+// help is the key line under the list: what each key does where you are.
+func (m model) help() string {
+	keys := []string{"↑↓", "move", "→", "in", "←", "up", "⏎", "cd", "1-9", "jump", "type", "search", "tab", "columns", "esc", "quit"}
+	switch {
+	case m.query != "":
+		keys = []string{"type", "refine", "↑↓", "move", "→", "browse into", "⏎", "cd", "tab", "columns", "esc", "clear search"}
+	case m.columns:
+		keys[13] = "list"
+	}
+	var pairs []string
+	for i := 0; i < len(keys); i += 2 {
+		pairs = append(pairs, key.Render(keys[i])+" "+dim.Render(keys[i+1]))
+	}
+	line := "  " + strings.Join(pairs, "  ")
+	if m.width > 0 {
+		line = cut(line, m.width, false)
+	}
+	return line + "\n"
 }
 
 // window is the list rows on screen, rows at most from offset, the
@@ -432,7 +456,11 @@ func (m model) window(rows, width int) []string {
 		if width > 0 {
 			name = cut(name, width-ansi.StringWidth(lead+tail), m.query != "")
 		}
-		lines = append(lines, lead+name+tail)
+		row := lead + name + tail
+		if on {
+			row = onBar(row, width)
+		}
+		lines = append(lines, row)
 	}
 	return lines
 }

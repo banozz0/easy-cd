@@ -206,8 +206,8 @@ func TestSearchHighlightsMatchedLettersAndDimsTheParent(t *testing.T) {
 
 	screen, _ := searched(t, home, "code", "my-")
 
-	// faint ~/work/, plain my-, bold yellow code
-	if want := "\x1b[2m~/work/\x1b[0mmy-\x1b[1;93mcode\x1b[0m"; !strings.Contains(screen, want) {
+	// faint ~/work/, plain my-, bold yellow code, all on the selection bar
+	if want := "\x1b[2m~/work/\x1b[0m\x1b[100mmy-\x1b[1;93mcode\x1b[0m"; !strings.Contains(screen, want) {
 		t.Fatalf("screen lacks %q:\n%q", want, screen)
 	}
 }

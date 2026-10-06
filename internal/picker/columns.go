@@ -78,20 +78,34 @@ const colSep = " │ "
 func (m model) columnsView(rows int) string {
 	cols := trail(m.dir, rows)
 	weight := len(cols) + 4
-	return sideBySide(append(cols, column{m.window(rows, 0), weight}, column{m.preview.cells(rows), weight}), m.width)
+	cols = append(cols, column{weight: weight}, column{m.preview.cells(rows), weight})
+	cols[len(cols)-2].cells = m.window(rows, widths(cols, m.width)[len(cols)-2])
+	return sideBySide(cols, m.width)
 }
 
-// sideBySide lays cols out across width terminal columns (80 while it is
-// unknown), each taking its weight's share.
-func sideBySide(cols []column, width int) string {
+// widths shares width terminal columns (80 while it is unknown) among cols
+// by weight, after the separators between them.
+func widths(cols []column, width int) []int {
 	free, sum := cmp.Or(width, 80)-(len(cols)-1)*ansi.StringWidth(colSep), 0
-	shown := 0
 	for _, c := range cols {
 		sum += c.weight
-		shown = max(shown, len(c.cells))
 		if c.weight == 0 {
 			free--
 		}
+	}
+	ws := make([]int, len(cols))
+	for i, c := range cols {
+		ws[i] = max(free*c.weight/sum, 1)
+	}
+	return ws
+}
+
+// sideBySide lays cols out across width terminal columns, each taking its
+// share from widths.
+func sideBySide(cols []column, width int) string {
+	ws, shown := widths(cols, width), 0
+	for _, c := range cols {
+		shown = max(shown, len(c.cells))
 	}
 	var b strings.Builder
 	for r := range shown {
@@ -101,7 +115,7 @@ func sideBySide(cols []column, width int) string {
 			if r < len(c.cells) {
 				cell = c.cells[r]
 			}
-			cells[i] = fit(cell, max(free*c.weight/sum, 1))
+			cells[i] = fit(cell, ws[i])
 		}
 		b.WriteString(strings.TrimRight(strings.Join(cells, colSep), " ") + "\n")
 	}

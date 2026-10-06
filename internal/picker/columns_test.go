@@ -178,7 +178,7 @@ func TestTabDuringSearchOpensColumnsAtTheResult(t *testing.T) {
 	if got, want := firstRow(t, screen), []string{"x", "y", "dest"}; !slices.Equal(got, want) {
 		t.Fatalf("columns %q, want %q, screen:\n%s", got, want, screen)
 	}
-	if strings.Contains(screen, "search") || !strings.Contains(screen, "▸") {
+	if strings.Contains(screen, "search ›") || !strings.Contains(screen, "▸") {
 		t.Fatalf("want the search gone and dest highlighted, screen:\n%s", screen)
 	}
 	var stdout bytes.Buffer

@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/muesli/termenv"
 
@@ -268,11 +269,18 @@ func TestDefaultLookHasIconsAndTheCalmTheme(t *testing.T) {
 	tm.Send(esc)
 	screen := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View()
 
-	// A folder icon, a file icon, and the breadcrumb and highlight marker in
-	// the theme's blue, #89b4fa as Lip Gloss renders it, with no flags set.
-	for _, want := range []string{"📁", "📄", "\x1b[1;38;2;137;179;250m~", "\x1b[38;2;137;179;250m▸"} {
-		if !strings.Contains(screen, want) {
+	// A folder icon, a file icon, the breadcrumb and highlight marker in the
+	// theme's blue (#89b4fa as Lip Gloss renders it), the highlighted row on
+	// its #313244 bar (as Lip Gloss renders it) and the key help at the bottom, with no flags set.
+	for _, want := range []string{"📁", "📄", "\x1b[1;38;2;137;179;250m~", "\x1b[38;2;137;179;250m▸", "\x1b[48;2;48;50;68m", "esc quit"} {
+		if !strings.Contains(screen, want) && !strings.Contains(ansi.Strip(screen), want) {
 			t.Fatalf("default screen lacks %q:\n%q", want, screen)
+		}
+	}
+	// The bar spans the terminal's width.
+	for _, line := range strings.Split(screen, "\n") {
+		if strings.Contains(line, "▸") && ansi.StringWidth(line) != 80 {
+			t.Fatalf("highlighted row is %d wide, want 80: %q", ansi.StringWidth(line), line)
 		}
 	}
 }

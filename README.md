@@ -5,10 +5,10 @@ Stop typing paths. Type `ecd`, pick the folder with your arrow keys, press Enter
 ```
 ~ ❯ ecd
   ~ › code › projects
-  ★ pinned   1 projects   2 work   3 notes
-  ◷ recent   4 website 8m  5 dotfiles 42m
-  ▸ my-app            ⎇ main ●    2 min ago
-    blog                          3 days ago
+  ★ pinned  1 projects  2 work  3 notes
+  ◷ recent  4 website  5 dotfiles
+▸ 📁 my-app  ⎇ main ●  2m
+  📁 blog  3d
   ↑↓ move  → in  ← up  ⏎ cd  1-9 jump  type search  tab columns  esc quit
 ```
 
