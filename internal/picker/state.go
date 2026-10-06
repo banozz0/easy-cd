@@ -12,15 +12,18 @@ import (
 	"time"
 )
 
-// stateDir is where the visit log and pins live: $XDG_STATE_HOME/ecd, or
-// ~/.local/state/ecd when it is unset.
-func stateDir() string {
-	if dir := os.Getenv("XDG_STATE_HOME"); filepath.IsAbs(dir) {
+// xdgDir is $env/ecd, or ~/fallback/ecd when env is unset.
+func xdgDir(env, fallback string) string {
+	if dir := os.Getenv(env); filepath.IsAbs(dir) {
 		return filepath.Join(dir, "ecd")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "state", "ecd")
+	return filepath.Join(home, fallback, "ecd")
 }
+
+// stateDir is where the visit log and pins live: $XDG_STATE_HOME/ecd, or
+// ~/.local/state/ecd when it is unset.
+func stateDir() string { return xdgDir("XDG_STATE_HOME", filepath.Join(".local", "state")) }
 
 func visitsFile() string { return filepath.Join(stateDir(), "visits") }
 
@@ -55,16 +58,25 @@ func isTemp(dir, home string) bool {
 	return false
 }
 
+// fromHome is path relative to home, and whether path is home or under it.
+func fromHome(path string) (string, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(home, path)
+	return rel, err == nil && filepath.IsLocal(rel)
+}
+
 // within reports whether path is root or under it.
 func within(path, root string) bool {
 	rel, err := filepath.Rel(root, path)
 	return err == nil && filepath.IsLocal(rel)
 }
 
-// recents returns up to n logged folders that still exist, best score
-// first. A visit's weight falls with its age, as in zoxide:
-// 4 within the hour, 2 within the day, 1/2 within the week, 1/4 after.
-func recents(n int) []string {
+// frecency scores every logged folder, as in zoxide: a visit weighs 4
+// within the hour, 2 within the day, 1/2 within the week, 1/4 after.
+func frecency() map[string]float64 {
 	data, _ := os.ReadFile(visitsFile())
 	now := time.Now()
 	score := map[string]float64{}
@@ -85,19 +97,15 @@ func recents(n int) []string {
 			score[dir] += 0.25
 		}
 	}
+	return score
+}
+
+// visited returns the logged folders that still exist, best score first.
+func visited(score map[string]float64) []string {
 	dirs := slices.SortedFunc(maps.Keys(score), func(a, b string) int {
 		return cmp.Or(cmp.Compare(score[b], score[a]), strings.Compare(a, b))
 	})
-	var live []string
-	for _, dir := range dirs {
-		if len(live) == n {
-			break
-		}
-		if isDir(dir) {
-			live = append(live, dir)
-		}
-	}
-	return live
+	return slices.DeleteFunc(dirs, func(dir string) bool { return !isDir(dir) })
 }
 
 func isDir(path string) bool {

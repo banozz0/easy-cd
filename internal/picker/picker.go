@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type model struct {
@@ -20,10 +21,15 @@ type model struct {
 	offset  int      // first folder shown when the list is taller than the screen
 	height  int      // terminal rows, 0 until the first resize
 	pins    []string // pinned folders, at most maxPins
-	recent  []string // most-visited folders, best first
 	query   string   // search text typed so far
-	notice  string   // one-off message shown until the next key
-	picked  string   // absolute path landed on, empty on Esc
+	results []match  // folders matching query, best first
+	logged  []string // visited folders that still exist, best score first
+	index   []string // folders searched: the folder index plus logged
+	indexed bool     // whether the background index refresh has landed
+	refresh *index
+	bonus   map[string]int // search bonus of visited folders
+	notice  string         // one-off message shown until the next key
+	picked  string         // absolute path landed on, empty on Esc
 }
 
 const (
@@ -33,10 +39,35 @@ const (
 
 // New returns a picker listing the folders of dir.
 func New(dir string) tea.Model {
-	// Load enough recents to fill slots 4-9 even when all pins are among them.
-	m := model{pins: loadPins(), recent: recents(numSlots)}
+	score := frecency()
+	m := model{pins: loadPins(), logged: visited(score), bonus: map[string]int{}}
+	for dir, s := range score {
+		m.bonus[dir] = min(int(10*s), maxBonus)
+	}
+	// Logged folders are searchable however deep the index reaches.
+	m.index, m.refresh = loadIndex(m.logged)
 	return m.cd(dir, "")
 }
+
+// maxBonus caps how far visits lift a search result: past a deeper match,
+// never past a better kind of match.
+const maxBonus = 40
+
+// union is a followed by the paths of b it lacks.
+func union(a, b []string) []string {
+	seen := map[string]bool{}
+	var all []string
+	for _, p := range slices.Concat(a, b) {
+		if !seen[p] {
+			seen[p] = true
+			all = append(all, p)
+		}
+	}
+	return all
+}
+
+// indexMsg reports that the background index refresh has finished.
+type indexMsg struct{}
 
 // slots are the jump targets for digits 1-9: pins on 1-3, then the recents
 // not already pinned on 4-9. An empty string is an empty slot.
@@ -44,7 +75,7 @@ func (m model) slots() [numSlots]string {
 	var slots [numSlots]string
 	copy(slots[:], m.pins)
 	i := maxPins
-	for _, dir := range m.recent {
+	for _, dir := range m.logged {
 		if i < numSlots && !slices.Contains(m.pins, dir) {
 			slots[i] = dir
 			i++
@@ -57,6 +88,9 @@ func (m model) slots() [numSlots]string {
 // A pin past maxPins is refused with a notice rather than evicting one.
 func (m model) togglePin() model {
 	dir := m.highlighted()
+	if dir == "" {
+		return m
+	}
 	pins := slices.Clone(m.pins)
 	if i := slices.Index(pins, dir); i >= 0 {
 		pins = slices.Delete(pins, i, i+1)
@@ -94,16 +128,46 @@ func subfolders(dir string) []string {
 	return names
 }
 
-// highlighted is the absolute path under the cursor, or dir itself when it
-// has no subfolders.
+// highlighted is the absolute path under the cursor: a search result, or
+// a subfolder of dir, or dir itself when it has none. It is empty when a
+// search matches nothing.
 func (m model) highlighted() string {
+	if m.query != "" {
+		if len(m.results) == 0 {
+			return ""
+		}
+		return m.results[m.cursor].path
+	}
 	if len(m.folders) == 0 {
 		return m.dir
 	}
 	return filepath.Join(m.dir, m.folders[m.cursor])
 }
 
-func (m model) Init() tea.Cmd { return nil }
+// rows is how many entries the list holds: results while searching,
+// subfolders otherwise.
+func (m model) rows() int {
+	if m.query != "" {
+		return len(m.results)
+	}
+	return len(m.folders)
+}
+
+// searched sets the query and reruns the search, highlight on the best.
+func (m model) searched(query string) model {
+	m.query, m.cursor, m.results = query, 0, nil
+	if query != "" {
+		m.results = search(query, m.dir, m.index, m.bonus)
+	}
+	return m
+}
+
+func (m model) Init() tea.Cmd {
+	return func() tea.Msg {
+		<-m.refresh.done
+		return indexMsg{}
+	}
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m, cmd := m.update(msg)
@@ -114,6 +178,11 @@ func (m model) update(msg tea.Msg) (model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
+	case indexMsg:
+		m.index, m.indexed = m.refresh.folders, true
+		cursor := m.cursor
+		m = m.searched(m.query)
+		m.cursor = min(cursor, max(m.rows()-1, 0))
 	case tea.KeyMsg:
 		m.notice = ""
 		return m.key(msg)
@@ -128,32 +197,42 @@ func (m model) key(key tea.KeyMsg) (model, tea.Cmd) {
 			m.cursor--
 		}
 	case tea.KeyDown:
-		if m.cursor < len(m.folders)-1 {
+		if m.cursor < m.rows()-1 {
 			m.cursor++
 		}
 	case tea.KeyRight:
-		if len(m.folders) > 0 {
-			return m.cd(m.highlighted(), ""), nil
+		if dir := m.highlighted(); m.rows() > 0 {
+			return m.searched("").cd(dir, ""), nil
 		}
 	case tea.KeyLeft:
-		if parent := filepath.Dir(m.dir); parent != m.dir {
+		if parent := filepath.Dir(m.dir); m.query == "" && parent != m.dir {
 			return m.cd(parent, filepath.Base(m.dir)), nil
 		}
 	case tea.KeyEnter:
-		m.picked = m.highlighted()
-		return m, tea.Quit
+		if m.picked = m.highlighted(); m.picked != "" {
+			return m, tea.Quit
+		}
 	case tea.KeyCtrlP:
 		return m.togglePin(), nil
 	case tea.KeyRunes:
 		if r := key.Runes; m.query == "" && len(r) == 1 && '1' <= r[0] && r[0] <= '9' {
 			return m.jump(int(r[0] - '1'))
 		}
-		m.query += string(key.Runes)
+		return m.searched(m.query + string(key.Runes)), nil
 	case tea.KeySpace:
 		if m.query != "" {
-			m.query += " "
+			return m.searched(m.query + " "), nil
 		}
-	case tea.KeyEsc, tea.KeyCtrlC:
+	case tea.KeyBackspace:
+		if q := []rune(m.query); len(q) > 0 {
+			return m.searched(string(q[:len(q)-1])), nil
+		}
+	case tea.KeyEsc:
+		if m.query != "" {
+			return m.searched(""), nil
+		}
+		return m, tea.Quit
+	case tea.KeyCtrlC:
 		return m, tea.Quit
 	}
 	return m, nil
@@ -170,7 +249,7 @@ func (m model) jump(i int) (model, tea.Cmd) {
 // scrolled moves the list window just enough to keep the highlight on screen.
 func (m model) scrolled() model {
 	rows := m.listRows(m.header())
-	m.offset = min(m.offset, m.cursor, max(len(m.folders)-rows, 0))
+	m.offset = min(m.offset, m.cursor, max(m.rows()-rows, 0))
 	m.offset = max(m.offset, m.cursor-rows+1)
 	return m
 }
@@ -179,7 +258,7 @@ func (m model) scrolled() model {
 // and the empty line after it takes the terminal's last row.
 func (m model) listRows(header string) int {
 	if m.height == 0 {
-		return len(m.folders)
+		return m.rows()
 	}
 	return max(m.height-strings.Count(header, "\n")-1, 1)
 }
@@ -188,15 +267,41 @@ func (m model) View() string {
 	header := m.header()
 	var b strings.Builder
 	b.WriteString(header)
-	end := min(m.offset+m.listRows(header), len(m.folders))
+	if m.query != "" && len(m.results) == 0 {
+		if m.indexed {
+			b.WriteString("  no match\n")
+		} else {
+			b.WriteString("  indexing…\n")
+		}
+	}
+	end := min(m.offset+m.listRows(header), m.rows())
 	for i := m.offset; i < end; i++ {
 		marker := "  "
 		if i == m.cursor {
 			marker = "▸ "
 		}
-		b.WriteString(marker + m.folders[i] + "\n")
+		if m.query != "" {
+			b.WriteString(marker + m.results[i].render() + "\n")
+		} else {
+			b.WriteString(marker + m.folders[i] + "\n")
+		}
 	}
 	return b.String()
+}
+
+var (
+	dim = lipgloss.NewStyle().Faint(true)
+	hit = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
+)
+
+// render shows the result as its path from home, parent dimmed and the
+// matched letters of its name highlighted.
+func (r match) render() string {
+	parent, name := filepath.Split(r.path)
+	if rel, ok := fromHome(parent); ok {
+		parent = filepath.Join("~", rel) + string(filepath.Separator)
+	}
+	return dim.Render(parent) + lipgloss.StyleRunes(name, r.hits, hit, lipgloss.NewStyle())
 }
 
 // header is the lines above the folder list: breadcrumb, then the search
@@ -236,10 +341,8 @@ func slotRow(label string, slots []string, first int) string {
 func breadcrumb(dir string) string {
 	const sep = string(filepath.Separator)
 	head, rest := sep, dir
-	if home, err := os.UserHomeDir(); err == nil {
-		if rel, err := filepath.Rel(home, dir); err == nil && filepath.IsLocal(rel) {
-			head, rest = "~", rel
-		}
+	if rel, ok := fromHome(dir); ok {
+		head, rest = "~", rel
 	}
 	parts := []string{head}
 	for _, p := range strings.Split(rest, sep) {
@@ -252,10 +355,15 @@ func breadcrumb(dir string) string {
 
 // Finish writes the picked folder to stdout, logs it as a visit and returns
 // the exit code: 0 when a folder was picked, 1 when the picker was left with
-// Esc.
+// Esc. It first waits for the index refresh to reach the cache, which a
+// quick pick would otherwise cut short.
 func Finish(final tea.Model, stdout io.Writer) int {
 	m, ok := final.(model)
-	if !ok || m.picked == "" {
+	if !ok {
+		return 1
+	}
+	<-m.refresh.done
+	if m.picked == "" {
 		return 1
 	}
 	recordVisit(m.picked)

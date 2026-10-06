@@ -7,6 +7,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/banozz0/easy-cd/internal/picker"
 )
@@ -52,6 +53,8 @@ func pick() (tea.Model, error) {
 		return nil, fmt.Errorf("needs a terminal: %w", err)
 	}
 	defer tty.Close()
+	// Styles follow the terminal drawn on, not stdout, which the shell captures.
+	lipgloss.SetColorProfile(lipgloss.NewRenderer(tty).ColorProfile())
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, err

@@ -41,6 +41,8 @@ var (
 	enter = tea.KeyMsg{Type: tea.KeyEnter}
 	esc   = tea.KeyMsg{Type: tea.KeyEsc}
 	pin   = tea.KeyMsg{Type: tea.KeyCtrlP}
+
+	backspace = tea.KeyMsg{Type: tea.KeyBackspace}
 )
 
 // typed is s typed on the keyboard, one key per character.
@@ -174,6 +176,7 @@ func TestDigitAfterALetterIsSearchText(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(screen []byte) bool {
 		return bytes.Contains(screen, []byte("a1"))
 	}, teatest.WithDuration(5*time.Second))
+	tm.Send(esc) // clears the search
 	tm.Send(esc)
 	var stdout bytes.Buffer
 	picker.Finish(tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)), &stdout)
