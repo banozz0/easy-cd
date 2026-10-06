@@ -105,8 +105,12 @@ func (m model) badged() tea.Cmd {
 
 // badge is a repo's branch with a dot when dirty, empty for no repo.
 func (r repo) badge() string {
-	if r.dirty {
-		return r.branch + " ●"
+	if r.branch == "" {
+		return ""
 	}
-	return r.branch
+	b := branch.Render("⎇ " + r.branch)
+	if r.dirty {
+		b += " " + unsaved.Render("●")
+	}
+	return b
 }

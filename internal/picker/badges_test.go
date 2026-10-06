@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/teatest"
 )
 
@@ -82,7 +83,7 @@ func TestListShowsAndMovesBeforeGitAnswersAndBadgesFillInAfter(t *testing.T) {
 	tm := newPicker(t, home)
 
 	// The first frame and the first key both land while git still sleeps.
-	for _, want := range []string{"repo", "▸ zz"} {
+	for _, want := range []string{"repo", "▸ 📁 zz"} {
 		var seen []byte
 		teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 			seen = out
@@ -96,4 +97,26 @@ func TestListShowsAndMovesBeforeGitAnswersAndBadgesFillInAfter(t *testing.T) {
 	waitFor(t, tm, "feature-x")
 	tm.Send(esc)
 	tm.WaitFinished(t, teatest.WithFinalTimeout(5*time.Second))
+}
+
+func TestNarrowListCutsRowsToTheWidthAndKeepsTheBadge(t *testing.T) {
+	home := newHome(t, "aaaa-long-folder/bbbb-long-folder/cccc-long-folder/the-repo")
+	gitInit(t, filepath.Join(home, "aaaa-long-folder/bbbb-long-folder/cccc-long-folder/the-repo"), "feature-x")
+	tm := newPicker(t, home, teatest.WithInitialTermSize(40, 24))
+	for _, k := range typed("the-repo") {
+		tm.Send(k)
+	}
+	waitFor(t, tm, "feature-x")
+	tm.Send(enter)
+
+	screen := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View()
+	for _, line := range strings.Split(screen, "\n") {
+		if w := ansi.StringWidth(line); w > 40 {
+			t.Fatalf("line %d wide on a 40-column terminal: %q", w, line)
+		}
+	}
+	// The path is shortened from the left: the folder's name and the badge stay.
+	if r := rows(screen)[2]; !strings.HasSuffix(r, "/the-repo") || !strings.Contains(screen, "feature-x") {
+		t.Fatalf("result row %q lost its name, or the branch badge was cut, screen:\n%s", r, screen)
+	}
 }

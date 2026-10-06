@@ -11,7 +11,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/muesli/termenv"
 
 	"github.com/banozz0/easy-cd/internal/picker"
 )
@@ -33,13 +35,14 @@ func newHome(t *testing.T, dirs ...string) string {
 	return home
 }
 
-// newPicker runs picker.New(dir) under teatest. Its cleanup waits for the
-// index refresh, which outlives the program, before the temp dirs go.
-func newPicker(t *testing.T, dir string) *teatest.TestModel {
+// newPicker runs picker.New(dir) under teatest, on an 80x24 terminal unless
+// opts say otherwise. Its cleanup waits for the index
+// refresh, which outlives the program, before the temp dirs go.
+func newPicker(t *testing.T, dir string, opts ...teatest.TestOption) *teatest.TestModel {
 	t.Helper()
 	m := picker.New(dir)
 	t.Cleanup(func() { picker.WaitRefresh(m) })
-	return teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	return teatest.NewTestModel(t, m, append([]teatest.TestOption{teatest.WithInitialTermSize(80, 24)}, opts...)...)
 }
 
 var (
@@ -241,7 +244,7 @@ func TestListScrollsToKeepTheHighlightOnScreen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(screen, []byte("~ › list")) || !bytes.Contains(screen, []byte("▸ f39")) {
+	if !bytes.Contains(screen, []byte("~ › list")) || !bytes.Contains(screen, []byte("▸ 📁 f39")) {
 		t.Fatalf("terminal output lacks the breadcrumb or the highlighted f39:\n%s", screen)
 	}
 	if rows := strings.Split(final.View(), "\n"); len(rows) > 24 {
@@ -251,5 +254,48 @@ func TestListScrollsToKeepTheHighlightOnScreen(t *testing.T) {
 	picker.Finish(final, &stdout)
 	if want := filepath.Join(home, "list", "f39") + "\n"; stdout.String() != want {
 		t.Fatalf("stdout %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestDefaultLookHasIconsAndTheCalmTheme(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor) // what a modern terminal reports
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	home := newHome(t, "code")
+	writeFile(t, home, "notes.txt", "x\n")
+	tm := newPicker(t, home)
+
+	waitFor(t, tm, "notes.txt")
+	tm.Send(esc)
+	screen := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View()
+
+	// A folder icon, a file icon, and the breadcrumb and highlight marker in
+	// the theme's blue, #89b4fa as Lip Gloss renders it, with no flags set.
+	for _, want := range []string{"📁", "📄", "\x1b[1;38;2;137;179;250m~", "\x1b[38;2;137;179;250m▸"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("default screen lacks %q:\n%q", want, screen)
+		}
+	}
+}
+
+func TestVisitLogKeepsItsNewestLinesPastTheCap(t *testing.T) {
+	home := newHome(t, "old", "new")
+	var log strings.Builder
+	for i := range 5000 {
+		fmt.Fprintf(&log, "%d\t%s\n", 1_000_000+i, filepath.Join(home, "old"))
+	}
+	if err := os.MkdirAll(filepath.Dir(stateFile(home, "visits")), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Dir(stateFile(home, "visits")), "visits", log.String())
+
+	run(t, filepath.Join(home, "new"), enter)
+
+	data, err := os.ReadFile(stateFile(home, "visits"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) > 2500 || !strings.HasSuffix(lines[len(lines)-1], "\t"+filepath.Join(home, "new")) || strings.HasPrefix(lines[0], "1000000\t") {
+		t.Fatalf("visit log has %d lines from %q to %q, want at most 2500 ending in the new visit, the oldest gone", len(lines), lines[0], lines[len(lines)-1])
 	}
 }

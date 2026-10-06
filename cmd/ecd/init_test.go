@@ -2,28 +2,67 @@ package main_test
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
-var ecdBin string
+// binDir holds the ecd binary the tests build.
+var binDir string
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "ecd-bin")
 	if err != nil {
 		panic(err)
 	}
-	ecdBin = filepath.Join(dir, "ecd")
-	if out, err := exec.Command("go", "build", "-o", ecdBin, ".").CombinedOutput(); err != nil {
-		panic(string(out))
-	}
+	binDir = dir
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+// build builds ecd on first use. go test caches a pass against the files the
+// test process reads, and go build reads the sources in another process, so
+// they are read here too, inside a test where go test records it: editing
+// any of them makes the next go test run these tests again.
+var build = sync.OnceValues(func() (string, error) {
+	readBuildInputs("../..")
+	bin := filepath.Join(binDir, "ecd")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		return "", fmt.Errorf("go build: %v\n%s", err, out)
+	}
+	return bin, nil
+})
+
+// ecd is the path of the built binary.
+func ecd(t *testing.T) string {
+	t.Helper()
+	bin, err := build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+// readBuildInputs reads the module's non-test Go files, go.mod and go.sum
+// under root, skipping hidden folders such as .git.
+func readBuildInputs(root string) {
+	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		switch name := d.Name(); {
+		case err != nil:
+			return nil
+		case d.IsDir() && path != root && strings.HasPrefix(name, "."):
+			return filepath.SkipDir
+		case name == "go.mod" || name == "go.sum" || strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go"):
+			os.ReadFile(path)
+		}
+		return nil
+	})
 }
 
 // shell is one shell ecd init supports, run clean with no user config.
@@ -75,7 +114,7 @@ func (sh shell) run(t *testing.T, pick string, exit int, script string) string {
 
 	script = "cd " + start + "; " + script
 	if sh.source != "" {
-		script = fmt.Sprintf(sh.source, ecdBin) + "; " + script
+		script = fmt.Sprintf(sh.source, ecd(t)) + "; " + script
 	}
 	cmd := exec.Command(sh.cmd[0], append(sh.cmd[1:], script)...)
 	cmd.Env = append(os.Environ(), "PATH="+stubDir+":"+os.Getenv("PATH"), "ECD_STUB_PICK="+pick, "ECD_STUB_EXIT="+strconv.Itoa(exit))
@@ -136,13 +175,29 @@ func TestCdIsUntouched(t *testing.T) {
 	})
 }
 
+// TestCdDashReturnsToTheFolderBeforeThePick covers fish above all, whose
+// ecd calls its cd function: cd - must still know the folder before ecd.
+func TestCdDashReturnsToTheFolderBeforeThePick(t *testing.T) {
+	eachShell(t, func(t *testing.T, sh shell) {
+		if got := sh.run(t, t.TempDir(), 0, "ecd; cd - >/dev/null; basename $PWD"); got != "start" {
+			t.Fatalf("pwd after cd - ends in %q, want start", got)
+		}
+	})
+}
+
+// TestInitRejectsAnUnknownShell also checks the usage names both bash
+// files: macOS bash login shells read ~/.bash_profile, others ~/.bashrc.
 func TestInitRejectsAnUnknownShell(t *testing.T) {
-	out, err := exec.Command(ecdBin, "init", "tcsh").CombinedOutput()
-	if err == nil {
-		t.Fatalf("ecd init tcsh exited 0:\n%s", out)
-	}
-	if !strings.Contains(string(out), "usage:") {
-		t.Fatalf("ecd init tcsh printed no usage:\n%s", out)
+	for _, args := range [][]string{{"init"}, {"init", "tcsh"}} {
+		out, err := exec.Command(ecd(t), args...).CombinedOutput()
+		if err == nil {
+			t.Fatalf("ecd %s exited 0:\n%s", strings.Join(args, " "), out)
+		}
+		for _, want := range []string{"usage:", "~/.bashrc", "~/.bash_profile"} {
+			if !strings.Contains(string(out), want) {
+				t.Fatalf("ecd %s usage lacks %q:\n%s", strings.Join(args, " "), want, out)
+			}
+		}
 	}
 }
 

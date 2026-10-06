@@ -47,10 +47,10 @@ func rows(screen string) []string {
 	return lines
 }
 
-// name is a row's name: the cell without its highlight marker, indent and
-// the badges two spaces after it.
+// name is a row's name: the cell without its highlight marker, indent,
+// icon and the badges two spaces after it.
 func name(cell string) string {
-	name, _, _ := strings.Cut(strings.TrimLeft(cell, "▸ "), "  ")
+	name, _, _ := strings.Cut(strings.TrimLeft(cell, "▸ 📁📄"), "  ")
 	return name
 }
 
@@ -123,7 +123,7 @@ func TestBackspaceEditsTheSearchAndEscClearsItBeforeQuitting(t *testing.T) {
 	tm.Send(backspace)
 	waitFor(t, tm, "~/beta") // "a" matches both folders again
 	tm.Send(esc)
-	waitFor(t, tm, "▸ alpha") // the folder list is back
+	waitFor(t, tm, "▸ 📁 alpha") // the folder list is back
 	tm.Send(esc)
 
 	var stdout bytes.Buffer
@@ -206,8 +206,36 @@ func TestSearchHighlightsMatchedLettersAndDimsTheParent(t *testing.T) {
 
 	screen, _ := searched(t, home, "code", "my-")
 
-	// faint ~/work/, plain my-, bold blue code
-	if want := "\x1b[2m~/work/\x1b[0mmy-\x1b[1;34mcode\x1b[0m"; !strings.Contains(screen, want) {
+	// faint ~/work/, plain my-, bold yellow code
+	if want := "\x1b[2m~/work/\x1b[0mmy-\x1b[1;93mcode\x1b[0m"; !strings.Contains(screen, want) {
 		t.Fatalf("screen lacks %q:\n%q", want, screen)
+	}
+}
+
+// TestRefreshSweepsTempFilesAnEarlierOneLeft: a refresh killed mid-write
+// leaves a folders-* temp file; the next refresh removes it once it is old,
+// and leaves a fresh one, which may be another ecd writing right now.
+func TestRefreshSweepsTempFilesAnEarlierOneLeft(t *testing.T) {
+	home := newHome(t, "a")
+	dir := filepath.Join(os.Getenv("XDG_CACHE_HOME"), "ecd")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "folders-stale", "")
+	writeFile(t, dir, "folders-fresh", "")
+	hourAgo := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(filepath.Join(dir, "folders-stale"), hourAgo, hourAgo); err != nil {
+		t.Fatal(err)
+	}
+	tm := newPicker(t, home)
+
+	tm.Send(esc)
+	picker.WaitRefresh(tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)))
+
+	if _, err := os.Stat(filepath.Join(dir, "folders-stale")); !os.IsNotExist(err) {
+		t.Fatalf("stale temp file still there: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "folders-fresh")); err != nil {
+		t.Fatalf("fresh temp file removed: %v", err)
 	}
 }

@@ -42,8 +42,54 @@ func recordVisit(dir string) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
 	fmt.Fprintf(f, "%d\t%s\n", time.Now().Unix(), dir)
+	f.Close()
+	trimVisits()
+}
+
+const (
+	maxVisits  = 5000 // lines the visit log holds before it is trimmed
+	keptVisits = 2500 // its newest lines kept by a trim
+)
+
+// trimVisits keeps the newest keptVisits lines of the visit log once it
+// holds more than maxVisits, so an open never reads every landing ever made.
+func trimVisits() {
+	file := visitsFile()
+	data, _ := os.ReadFile(file)
+	lines := strings.SplitAfter(string(data), "\n")
+	if len(lines) <= maxVisits+1 { // the last is empty, after the final newline
+		return
+	}
+	replace(file, strings.Join(lines[len(lines)-keptVisits-1:], ""))
+}
+
+// staleTemp is the age past which a temp file left by replace is debris: a
+// process killed between writing it and the rename.
+const staleTemp = 10 * time.Minute
+
+// replace writes data to file through a temp file beside it, named file
+// plus a dash and a random suffix, so a reader never sees half of it. It
+// first removes stale temp files of file, leaving a fresh one that may be
+// another ecd writing right now.
+func replace(file, data string) error {
+	dir, base := filepath.Split(file)
+	list, _ := os.ReadDir(dir)
+	for _, e := range list {
+		if fi, err := e.Info(); err == nil && strings.HasPrefix(e.Name(), base+"-") && time.Since(fi.ModTime()) > staleTemp {
+			os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+	tmp, err := os.CreateTemp(dir, base+"-*")
+	if err != nil {
+		return err
+	}
+	_, err = tmp.WriteString(data)
+	if err := cmp.Or(err, tmp.Close()); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return os.Rename(tmp.Name(), file)
 }
 
 // isTemp reports whether dir is under a temp root. A root that holds home
@@ -131,5 +177,5 @@ func savePins(pins []string) error {
 	if err := os.MkdirAll(stateDir(), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(pinsFile(), []byte(strings.Join(pins, "\n")+"\n"), 0o644)
+	return replace(pinsFile(), strings.Join(pins, "\n")+"\n")
 }

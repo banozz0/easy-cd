@@ -157,3 +157,52 @@ func TestColumnsKeepTheWayDownInView(t *testing.T) {
 	}
 	t.Fatalf("the ~ column lacks f39, screen:\n%s", screen)
 }
+
+// TestTabDuringSearchOpensColumnsAtTheResult: the result's folder is
+// highlighted in the last column, the columns lead down to it from ~, the
+// search is gone, and Enter prints the result itself, the highlighted folder.
+func TestTabDuringSearchOpensColumnsAtTheResult(t *testing.T) {
+	home := newHome(t, "x/y/dest/inside")
+	tm := newPicker(t, home)
+	for _, k := range typed("dest") {
+		tm.Send(k)
+	}
+	waitFor(t, tm, "~/x/y/dest")
+
+	tm.Send(tab)
+	waitColumns(t, tm)
+	tm.Send(enter)
+
+	final := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second))
+	screen := final.View()
+	if got, want := firstRow(t, screen), []string{"x", "y", "dest"}; !slices.Equal(got, want) {
+		t.Fatalf("columns %q, want %q, screen:\n%s", got, want, screen)
+	}
+	if strings.Contains(screen, "search") || !strings.Contains(screen, "▸") {
+		t.Fatalf("want the search gone and dest highlighted, screen:\n%s", screen)
+	}
+	var stdout bytes.Buffer
+	picker.Finish(final, &stdout)
+	if want := filepath.Join(home, "x", "y", "dest") + "\n"; stdout.String() != want {
+		t.Fatalf("stdout %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestTabOnASearchWithNoResultDoesNothing(t *testing.T) {
+	home := newHome(t, "a")
+	tm := newPicker(t, home)
+	for _, k := range typed("zzz") {
+		tm.Send(k)
+	}
+	waitFor(t, tm, "no match")
+
+	tm.Send(tab)
+	tm.Send(enter) // nothing highlighted: Enter does nothing either
+	tm.Send(esc)   // clears the search
+	tm.Send(esc)
+
+	final := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second))
+	if screen := final.View(); strings.Contains(screen, "│") {
+		t.Fatalf("Tab with no result opened the columns, screen:\n%s", screen)
+	}
+}

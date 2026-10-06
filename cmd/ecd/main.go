@@ -48,7 +48,7 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, `usage: ecd                       pick a folder
        ecd init <zsh|bash|fish>  print the shell function, then add to your shell's config:
                                    zsh   eval "$(ecd init zsh)"   in ~/.zshrc
-                                   bash  eval "$(ecd init bash)"  in ~/.bashrc
+                                   bash  eval "$(ecd init bash)"  in ~/.bashrc (macOS: ~/.bash_profile)
                                    fish  ecd init fish | source   in ~/.config/fish/config.fish`)
 		return 2
 	}

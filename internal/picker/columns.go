@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -24,8 +23,6 @@ const maxTrail = 4
 
 // ellipsis stands in for the folded middle of a deep trail.
 var ellipsis = column{cells: []string{"…"}}
-
-var onPath = lipgloss.NewStyle().Bold(true)
 
 // path is dir and the folders above it, from home (or / outside home)
 // down to dir.
@@ -81,7 +78,7 @@ const colSep = " │ "
 func (m model) columnsView(rows int) string {
 	cols := trail(m.dir, rows)
 	weight := len(cols) + 4
-	return sideBySide(append(cols, column{m.window(rows), weight}, column{m.preview.cells(rows), weight}), m.width)
+	return sideBySide(append(cols, column{m.window(rows, 0), weight}, column{m.preview.cells(rows), weight}), m.width)
 }
 
 // sideBySide lays cols out across width terminal columns (80 while it is

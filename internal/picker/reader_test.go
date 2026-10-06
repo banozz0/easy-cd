@@ -63,7 +63,7 @@ func TestReaderScrollsByPageAndLeftReturnsToTheSameHighlight(t *testing.T) {
 	tm.Send(esc)
 
 	screen := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View()
-	if !strings.Contains(screen, "▸ notes.txt") || strings.Contains(screen, "line 040") {
+	if !strings.Contains(screen, "▸ 📄 notes.txt") || strings.Contains(screen, "line 040") {
 		t.Fatalf("want the list back with notes.txt highlighted:\n%s", screen)
 	}
 }

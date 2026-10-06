@@ -12,10 +12,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type model struct {
@@ -295,7 +297,13 @@ func (m model) key(key tea.KeyMsg) (model, tea.Cmd) {
 		home, _ := os.UserHomeDir()
 		return m.searched("").cd(home, ""), nil
 	case tea.KeyTab:
-		m.columns = !m.columns
+		if m.query == "" {
+			m.columns = !m.columns
+		} else if dir := m.highlighted(); dir != "" {
+			// The columns open on the result, in its parent folder.
+			m = m.searched("").cd(filepath.Dir(dir), filepath.Base(dir))
+			m.columns = true
+		}
 	case tea.KeyEnter:
 		if file := m.file(); file != "" {
 			m.picked, m.opened = filepath.Dir(file), file
@@ -381,10 +389,10 @@ func (m model) View() string {
 	}
 	rows := m.listRows(header, m.rows())
 	if m.preview.path != "" {
-		b.WriteString(sideBySide([]column{{m.window(rows), 2}, {m.preview.cells(rows), 3}}, m.width))
+		b.WriteString(sideBySide([]column{{m.window(rows, 0), 2}, {m.preview.cells(rows), 3}}, m.width))
 		return b.String()
 	}
-	for _, row := range m.window(rows) {
+	for _, row := range m.window(rows, m.width) {
 		b.WriteString(row + "\n")
 	}
 	return b.String()
@@ -392,28 +400,54 @@ func (m model) View() string {
 
 // window is the list rows on screen, rows at most from offset, the
 // highlighted one marked: search results while searching, folders then
-// dimmed files otherwise.
-func (m model) window(rows int) []string {
+// dimmed files otherwise. With width set, each row is cut to it by
+// shortening its name, so the badges after it stay.
+func (m model) window(rows, width int) []string {
 	var lines []string
 	for i := range m.shown(rows) {
-		marker := "  "
-		if i == m.cursor {
-			marker = "▸ "
+		lead, on := "  ", i == m.cursor
+		if on {
+			lead = marker.Render("▸ ")
 		}
-		var name string
-		switch {
-		case m.query != "":
+		icon, name := folderIcon, ""
+		if m.query != "" {
 			name = m.results[i].render()
-		case i < len(m.folders):
-			name = m.entry(i)
-		default:
-			name = dim.Render(m.entry(i))
+		} else {
+			style := lipgloss.NewStyle()
+			if i >= len(m.folders) {
+				icon, style = fileIcon, dim
+			}
+			if on {
+				style = chosen
+			}
+			name = style.Render(m.entry(i))
 		}
-		path := m.rowPath(i)
-		parts := slices.DeleteFunc([]string{name, m.repos[path].badge(), age(path)}, func(s string) bool { return s == "" })
-		lines = append(lines, marker+strings.Join(parts, "  "))
+		lead += icon + " "
+		path, tail := m.rowPath(i), ""
+		for _, badge := range []string{m.repos[path].badge(), age(path)} {
+			if badge != "" {
+				tail += "  " + badge
+			}
+		}
+		if width > 0 {
+			name = cut(name, width-ansi.StringWidth(lead+tail), m.query != "")
+		}
+		lines = append(lines, lead+name+tail)
 	}
 	return lines
+}
+
+// cut fits s in w cells, an ellipsis marking what is gone: from the left
+// when left is set, so a search result keeps its folder's name.
+func cut(s string, w int, left bool) string {
+	over := ansi.StringWidth(s) - w
+	switch {
+	case over <= 0:
+		return s
+	case left:
+		return ansi.TruncateLeft(s, over+1, "…")
+	}
+	return ansi.Truncate(s, w, "…")
 }
 
 // shown is the rows on screen, rows at most from offset.
@@ -426,11 +460,6 @@ func (m model) shown(rows int) iter.Seq[int] {
 		}
 	}
 }
-
-var (
-	dim = lipgloss.NewStyle().Faint(true)
-	hit = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
-)
 
 // render shows the result as its path from home, parent dimmed and the
 // matched letters of its name highlighted.
@@ -451,8 +480,8 @@ func (m model) header() string {
 		b.WriteString("  search › " + m.query + "\n")
 	} else {
 		slots := m.slots()
-		b.WriteString(slotRow("★ pinned", slots[:maxPins], 0))
-		b.WriteString(slotRow("◷ recent", slots[maxPins:], maxPins))
+		b.WriteString(slotRow(pinned.Render("★ pinned"), slots[:maxPins], 0))
+		b.WriteString(slotRow(recent.Render("◷ recent"), slots[maxPins:], maxPins))
 	}
 	if m.notice != "" {
 		b.WriteString("  " + m.notice + "\n")
@@ -466,7 +495,7 @@ func slotRow(label string, slots []string, first int) string {
 	row := ""
 	for i, dir := range slots {
 		if dir != "" {
-			row += fmt.Sprintf("  %d %s", first+i+1, filepath.Base(dir))
+			row += fmt.Sprintf("  %s %s", dim.Render(strconv.Itoa(first+i+1)), filepath.Base(dir))
 		}
 	}
 	if row == "" {
@@ -485,7 +514,7 @@ func breadcrumb(dir string) string {
 	for _, d := range p[1:] {
 		parts = append(parts, filepath.Base(d))
 	}
-	return strings.Join(parts, " › ")
+	return crumb.Render(strings.Join(parts, " › "))
 }
 
 // Finish opens the picked file, if any, writes the folder landed on to

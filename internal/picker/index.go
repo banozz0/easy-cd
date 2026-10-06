@@ -78,22 +78,12 @@ func scan(home string) []string {
 	return folders
 }
 
-// saveIndex writes folders to the cache through a temp file, so a picker
-// opening meanwhile never reads half an index.
+// saveIndex writes folders to the cache whole, so a picker opening
+// meanwhile never reads half an index.
 func saveIndex(file string, folders []string) {
-	if os.MkdirAll(filepath.Dir(file), 0o755) != nil {
-		return
+	if os.MkdirAll(filepath.Dir(file), 0o755) == nil {
+		replace(file, strings.Join(folders, "\n")+"\n")
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(file), "folders-*")
-	if err != nil {
-		return
-	}
-	_, err = tmp.WriteString(strings.Join(folders, "\n") + "\n")
-	if tmp.Close() != nil || err != nil {
-		os.Remove(tmp.Name())
-		return
-	}
-	os.Rename(tmp.Name(), file)
 }
 
 // match is one search result: a folder, its score and the positions of the
