@@ -7,7 +7,9 @@ cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fis
 - Shaping record and every decision: `~/code/incubator/easy-cd/IDEA.md`.
 - Spec, dashboard and journal: vault `Projects/Easy CD/`. Read `ecd v1 spec.md` before
   touching code.
-- Status: graduated 2026-10-06; spec written, no code yet.
+- Status: graduated 2026-10-06; walking skeleton built (zsh init, list, arrows, Enter, Esc).
+- Code: `cmd/ecd` (binary, shell init), `internal/picker` (Bubble Tea model). Test with
+  `go test ./...`; the shell seam needs zsh on PATH.
 
 ## Hard rules
 
