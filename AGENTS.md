@@ -1,6 +1,6 @@
 # easy-cd — agent brief
 
-**Public** (MIT), released as v1.0.0 through the banozz0/homebrew-tap cask. `ecd` is a
+**Public** (MIT), released through the banozz0/homebrew-tap cask (latest v1.0.1). `ecd` is a
 terminal folder picker: favourites and recent folders on top, arrow keys to walk, type to
 search everywhere, Tab for Finder-style columns, Enter to cd. Go + Charm's Bubble Tea /
 Lip Gloss, one binary, macOS + Linux, zsh/bash/fish.
