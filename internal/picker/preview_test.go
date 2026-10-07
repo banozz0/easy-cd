@@ -176,3 +176,19 @@ func TestPreviewLabelSitsAboveAFilePreviewAndNeverOverAFolder(t *testing.T) {
 		})
 	}
 }
+
+func TestNoticeKeepsTheViewWithinAOneRowList(t *testing.T) {
+	home := newHome(t, "bin")
+	writeFile(t, filepath.Join(home, "bin"), "blob", "MAGIC\x00\n")
+	tm := newPicker(t, filepath.Join(home, "bin"))
+	waitFor(t, tm, "binary file")
+
+	// 9 rows leave one row for the list under the header and the key help.
+	tm.Send(tea.WindowSizeMsg{Width: 80, Height: 9})
+	tm.Send(esc)
+
+	view := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View()
+	if rows := strings.Split(view, "\n"); len(rows) > 9 || !strings.Contains(rows[0], "~ › bin") {
+		t.Fatalf("view is %d rows on a 9-row terminal or lost its breadcrumb:\n%s", len(rows), view)
+	}
+}

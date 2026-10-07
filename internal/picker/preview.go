@@ -88,9 +88,10 @@ func (p preview) cells(rows int) []string {
 }
 
 // pane is the preview column beside the list, rows at most: a dim
-// "preview" label over cells, and nothing until the file is read.
+// "preview" label over cells, and nothing until the file is read or while
+// there is no room under the label.
 func (p preview) pane(rows int) []string {
-	if p.lines == nil && p.notice == "" {
+	if p.lines == nil && p.notice == "" || rows < 2 {
 		return nil
 	}
 	return append([]string{dim.Render("preview")}, p.cells(max(rows-1, 0))...)
