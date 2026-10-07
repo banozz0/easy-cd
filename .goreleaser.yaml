@@ -18,8 +18,9 @@ changelog:
   disable: true
 
 # A cask, not a formula: goreleaser 2.16 retired brews. The binary is not signed
-# or notarized (that needs a paid Apple account), so until it is, the hook
-# clears macOS's quarantine flag after install.
+# or notarized (that needs a paid Apple account), so until it is, the custom
+# block clears macOS's quarantine flag after install. It is a custom_block
+# because goreleaser's hooks emit postflight, which Homebrew 7 deprecates.
 homebrew_casks:
   - name: easy-cd
     binaries: [ecd]
@@ -29,12 +30,12 @@ homebrew_casks:
     homepage: https://github.com/banozz0/easy-cd
     description: "Terminal folder picker: arrow keys to walk, type to search, Enter to cd"
     license: MIT
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ecd"]
-          end
+    custom_block: |
+      postflight_steps do
+        on_macos do
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/ecd"]
+        end
+      end
     caveats: |
       Add eval "$(ecd init zsh)" (or bash, or fish) to your shell's config.
       Run ecd init to see the exact line and file for each shell.

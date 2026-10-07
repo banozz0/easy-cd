@@ -6,7 +6,7 @@ Stop typing paths. Type `ecd`, pick the folder with your arrow keys, press Enter
 ~ ❯ ecd
   ~ › code › projects
   ★ pinned  1 projects  2 work  3 notes
-  ◷ recent  4 website  5 dotfiles
+  ◷ recent  4 website  5 notes
 ▸ 📁 my-app  ⎇ main ●  2m
   📁 blog  3d
   ↑↓ move  → in  ← up  ⏎ cd  1-9 jump  type search  tab columns  esc quit
