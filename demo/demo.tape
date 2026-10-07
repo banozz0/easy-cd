@@ -114,10 +114,10 @@ Sleep 1.4s
 # caption: Highlight a file to preview it beside the list
 Sleep 300ms
 Down
-# arrow 1004 348 206 38 1400 308 460 392
+# arrow 1004 348 206 38 1400 308 460 236
 Sleep 1.7s
 Down
-# arrow 1004 348 260 38 1400 272 460 548
+# arrow 1004 386 260 38 1400 308 460 236
 Sleep 1.9s
 
 # caption: <b>→</b> reads the whole file, <b>↓</b> scrolls, <b>←</b> comes back
