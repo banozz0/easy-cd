@@ -307,3 +307,57 @@ func TestVisitLogKeepsItsNewestLinesPastTheCap(t *testing.T) {
 		t.Fatalf("visit log has %d lines from %q to %q, want at most 2500 ending in the new visit, the oldest gone", len(lines), lines[0], lines[len(lines)-1])
 	}
 }
+
+func TestDotFoldersAndDotFilesAreNotListed(t *testing.T) {
+	home := newHome(t, ".hidden", "seen")
+	writeFile(t, home, ".env", "x\n")
+	writeFile(t, home, "notes.txt", "x\n")
+	tm := newPicker(t, home)
+
+	waitFor(t, tm, "seen", "notes.txt")
+	tm.Send(esc)
+	screen := ansi.Strip(tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View())
+
+	for _, hidden := range []string{".hidden", ".env"} {
+		if strings.Contains(screen, hidden) {
+			t.Fatalf("list shows %s:\n%s", hidden, screen)
+		}
+	}
+}
+
+func TestHelpShowsPinAndHomeKeysAndEveryKeyFitsOnAnEightyColumnTerminal(t *testing.T) {
+	home := newHome(t, "a")
+	tm := newPicker(t, home)
+
+	waitFor(t, tm, "esc quit")
+	tm.Send(esc)
+	screen := ansi.Strip(tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View())
+
+	for _, want := range []string{"↑↓ move", "^P pin", "⇧← home", "type search", "esc quit"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("key help lacks %q:\n%s", want, screen)
+		}
+	}
+	for _, line := range strings.Split(screen, "\n") {
+		if w := ansi.StringWidth(line); w > 80 {
+			t.Fatalf("line is %d wide on an 80-column terminal: %q", w, line)
+		}
+	}
+}
+
+const slotsHint = "Pinned and recent folders show here: press Enter on a folder, or ^P to pin"
+
+func TestFreshStartShowsWherePinsAndRecentsWillBe(t *testing.T) {
+	home := newHome(t, "a", "b")
+	tm := newPicker(t, home)
+
+	waitFor(t, tm, slotsHint)
+	tm.Send(pin) // the hint gives way to the first pin
+	waitFor(t, tm, "★ pinned  1 a")
+	tm.Send(esc)
+	screen := ansi.Strip(tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View())
+
+	if strings.Contains(screen, slotsHint) {
+		t.Fatalf("hint still shows beside a pin:\n%s", screen)
+	}
+}

@@ -21,9 +21,13 @@ var skipped = []string{"Library", "node_modules", "build", "dist", "target", "ou
 var bundles = []string{".app", ".photoslibrary", ".framework", ".bundle"}
 
 func skip(name string) bool {
-	return strings.HasPrefix(name, ".") || slices.Contains(skipped, name) ||
+	return hidden(name) || slices.Contains(skipped, name) ||
 		slices.ContainsFunc(bundles, func(s string) bool { return strings.HasSuffix(name, s) })
 }
+
+// hidden reports a name starting with a dot, which neither the index nor
+// the list shows.
+func hidden(name string) bool { return strings.HasPrefix(name, ".") }
 
 // cacheFile is the folder index on disk: $XDG_CACHE_HOME/ecd/folders, or
 // ~/.cache/ecd/folders when it is unset. It holds one folder path per line

@@ -130,10 +130,14 @@ func (m model) cd(dir, focus string) model {
 }
 
 // entries are the names in dir: its subfolders, symlinks to folders
-// included, and everything else as files. Nothing is read but the names.
+// included, and everything else as files, hidden names left out as search
+// leaves them out. Nothing is read but the names.
 func entries(dir string) (folders, files []string) {
 	list, _ := os.ReadDir(dir)
 	for _, e := range list {
+		if hidden(e.Name()) {
+			continue
+		}
 		if e.IsDir() || e.Type()&os.ModeSymlink != 0 && isDir(filepath.Join(dir, e.Name())) {
 			folders = append(folders, e.Name())
 		} else {
@@ -402,24 +406,29 @@ func (m model) View() string {
 	return b.String()
 }
 
-// help is the key line under the list: what each key does where you are.
+// help is the key lines under the list: what each key does where you are,
+// wrapped between keys onto as many lines as the width needs.
 func (m model) help() string {
-	keys := []string{"↑↓", "move", "→", "in", "←", "up", "⏎", "cd", "1-9", "jump", "type", "search", "tab", "columns", "esc", "quit"}
+	keys := []string{"↑↓", "move", "→", "in", "←", "up", "⏎", "cd", "1-9", "jump", "^P", "pin", "⇧←", "home", "type", "search", "tab", "columns", "esc", "quit"}
 	switch {
 	case m.query != "":
 		keys = []string{"type", "refine", "↑↓", "move", "→", "browse into", "⏎", "cd", "tab", "columns", "esc", "clear search"}
 	case m.columns:
-		keys[13] = "list"
+		keys[slices.Index(keys, "columns")] = "list"
 	}
-	var pairs []string
+	var b strings.Builder
+	line, w := "", 0
 	for i := 0; i < len(keys); i += 2 {
-		pairs = append(pairs, key.Render(keys[i])+" "+dim.Render(keys[i+1]))
+		pair := "  " + key.Render(keys[i]) + " " + dim.Render(keys[i+1])
+		pw := ansi.StringWidth(pair)
+		if w > 0 && m.width > 0 && w+pw > m.width {
+			b.WriteString(m.fit(line) + "\n")
+			line, w = "", 0
+		}
+		line, w = line+pair, w+pw
 	}
-	line := "  " + strings.Join(pairs, "  ")
-	if m.width > 0 {
-		line = cut(line, m.width, false)
-	}
-	return line + "\n"
+	b.WriteString(m.fit(line) + "\n")
+	return b.String()
 }
 
 // window is the list rows on screen, rows at most from offset, the
@@ -465,6 +474,14 @@ func (m model) window(rows, width int) []string {
 	return lines
 }
 
+// fit cuts line to the terminal's width, once the width is known.
+func (m model) fit(line string) string {
+	if m.width == 0 {
+		return line
+	}
+	return cut(line, m.width, false)
+}
+
 // cut fits s in w cells, an ellipsis marking what is gone: from the left
 // when left is set, so a search result keeps its folder's name.
 func cut(s string, w int, left bool) string {
@@ -506,8 +523,9 @@ func (m model) header() string {
 	b.WriteString("  " + breadcrumb(m.dir) + "\n")
 	if m.query != "" {
 		b.WriteString("  search › " + m.query + "\n")
+	} else if slots := m.slots(); slots == [numSlots]string{} {
+		b.WriteString(m.fit("  "+dim.Render("Pinned and recent folders show here: press Enter on a folder, or ^P to pin")) + "\n")
 	} else {
-		slots := m.slots()
 		b.WriteString(slotRow(pinned.Render("★ pinned"), slots[:maxPins], 0))
 		b.WriteString(slotRow(recent.Render("◷ recent"), slots[maxPins:], maxPins))
 	}
