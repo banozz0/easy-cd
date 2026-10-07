@@ -45,13 +45,13 @@ In the reader, ↑ ↓ PgUp PgDn scroll and ← or Esc goes back.
 ## How it picks
 
 - **Pins** are slots 1–3, up to three folders you choose with Ctrl+P.
-- **Recents** fill slots 4–9: the folders you pressed Enter on, scored by how often and how
-  lately, as in zoxide. Folders you only walk through don't count, and neither do home, `/`
+- **Recents** fill slots 4–9: the folders you landed in with Enter or 1–9, scored by how
+  often and how lately, as in zoxide. Folders you only walk through don't count, and neither do home, `/`
   or temp folders.
 - **Search** covers every folder under home, four levels deep, plus any folder you've
   visited. An exact name ranks first, then names that start with what you typed, then names
-  that contain it; folders under the one you're in win ties. Loose letter-by-letter matches
-  only show when almost nothing else does.
+  that contain it. Folders under the one you're in, and folders you've been visiting, get a boost.
+  Loose letter-by-letter matches only show when almost nothing else does.
 
 ## Where it keeps things
 
