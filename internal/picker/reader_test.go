@@ -2,7 +2,6 @@ package picker_test
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,12 +44,8 @@ func inReader(t *testing.T, dir, mark, want string) string {
 func TestReaderScrollsByPageAndLeftReturnsToTheSameHighlight(t *testing.T) {
 	home := newHome(t, "docs")
 	docs := filepath.Join(home, "docs")
-	var text strings.Builder
-	for i := 1; i <= 200; i++ {
-		fmt.Fprintf(&text, "line %03d\n", i)
-	}
 	writeFile(t, docs, "a.txt", "a\n")
-	writeFile(t, docs, "notes.txt", text.String())
+	writeFile(t, docs, "notes.txt", numbered(200))
 	writeFile(t, docs, "z.txt", "z\n")
 	tm := newPicker(t, docs)
 

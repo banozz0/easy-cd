@@ -78,9 +78,32 @@ const colSep = " │ "
 func (m model) columnsView(rows int) string {
 	cols := trail(m.dir, rows)
 	weight := len(cols) + 4
-	cols = append(cols, column{weight: weight}, column{m.preview.pane(rows), weight})
-	cols[len(cols)-2].cells = m.window(rows, widths(cols, m.width)[len(cols)-2])
+	return m.beside(cols, weight, weight, rows)
+}
+
+// minPane is the fewest rows the preview pane gets beside a shorter list:
+// its label and four lines, enough to tell what a file is.
+const minPane = 5
+
+// beside renders cols, then the list and the preview pane weighing list and
+// pane, rows rows at most. The pane is no taller than the tallest column, so
+// a long file never grows the picker, but gets minPane rows beside a
+// shorter list.
+func (m model) beside(cols []column, list, pane, rows int) string {
+	cols = append(cols, column{weight: list}, column{weight: pane})
+	n := len(cols)
+	cols[n-2].cells = m.window(rows, widths(cols, m.width)[n-2])
+	cols[n-1].cells = m.preview.pane(min(rows, max(tallest(cols), minPane)))
 	return sideBySide(cols, m.width)
+}
+
+// tallest is the most cells any of cols holds.
+func tallest(cols []column) int {
+	n := 0
+	for _, c := range cols {
+		n = max(n, len(c.cells))
+	}
+	return n
 }
 
 // widths shares width terminal columns (80 while it is unknown) among cols
@@ -103,12 +126,9 @@ func widths(cols []column, width int) []int {
 // sideBySide lays cols out across width terminal columns, each taking its
 // share from widths.
 func sideBySide(cols []column, width int) string {
-	ws, shown := widths(cols, width), 0
-	for _, c := range cols {
-		shown = max(shown, len(c.cells))
-	}
+	ws := widths(cols, width)
 	var b strings.Builder
-	for r := range shown {
+	for r := range tallest(cols) {
 		cells := make([]string, len(cols))
 		for i, c := range cols {
 			cell := ""

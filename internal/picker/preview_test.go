@@ -2,6 +2,7 @@ package picker_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -190,5 +191,55 @@ func TestNoticeKeepsTheViewWithinAOneRowList(t *testing.T) {
 	view := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View()
 	if rows := strings.Split(view, "\n"); len(rows) > 9 || !strings.Contains(rows[0], "~ › bin") {
 		t.Fatalf("view is %d rows on a 9-row terminal or lost its breadcrumb:\n%s", len(rows), view)
+	}
+}
+
+// numbered is n lines reading "line 001", "line 002" and on.
+func numbered(n int) string {
+	var b strings.Builder
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, "line %03d\n", i)
+	}
+	return b.String()
+}
+
+func TestLongFilePreviewKeepsThePickerHeight(t *testing.T) {
+	for _, view := range []struct {
+		name string
+		keys []tea.KeyMsg
+	}{{"list", nil}, {"columns", []tea.KeyMsg{tab}}} {
+		t.Run(view.name, func(t *testing.T) {
+			// Six rows, more than the preview's floor of five.
+			home := newHome(t, "docs/a", "docs/b", "docs/c", "docs/d", "docs/e")
+			docs := filepath.Join(home, "docs")
+			writeFile(t, docs, "long.txt", numbered(500))
+
+			onFolder := previewed(t, docs, "long.txt", view.keys...)
+			onFile := previewed(t, docs, "line 001", append(view.keys, down, down, down, down, down)...)
+
+			before, after := strings.Split(onFolder, "\n"), strings.Split(onFile, "\n")
+			if len(after) > len(before) {
+				t.Fatalf("picker grew from %d to %d rows on a long file:\n%s", len(before), len(after), onFile)
+			}
+			if !strings.Contains(after[0], "~ › docs") || !strings.Contains(onFile, "preview") || !strings.Contains(onFile, "^P pin") {
+				t.Fatalf("want the breadcrumb, the preview label and the key help:\n%s", onFile)
+			}
+		})
+	}
+}
+
+func TestOneFileFolderStillShowsSomeOfTheFile(t *testing.T) {
+	home := newHome(t, "one")
+	writeFile(t, filepath.Join(home, "one"), "note.txt", numbered(500))
+
+	screen := previewed(t, filepath.Join(home, "one"), "line 001")
+
+	for _, want := range []string{"preview", "line 001", "line 004"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("want %q on screen:\n%s", want, screen)
+		}
+	}
+	if strings.Contains(screen, "line 005") {
+		t.Fatalf("a one-row list shows the label and 4 lines, not more:\n%s", screen)
 	}
 }
