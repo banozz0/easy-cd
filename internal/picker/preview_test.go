@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/muesli/termenv"
 )
@@ -54,7 +55,7 @@ func TestHighlightedTextFileShowsItsFirstLinesBesideTheList(t *testing.T) {
 
 	screen := previewed(t, filepath.Join(home, "docs"), "second line")
 
-	if got, want := firstRow(t, screen), []string{"plan.txt", "first line"}; !slices.Equal(got, want) {
+	if got, want := firstRow(t, screen), []string{"plan.txt", "preview"}; !slices.Equal(got, want) {
 		t.Fatalf("row %q, want %q, screen:\n%s", got, want, screen)
 	}
 }
@@ -65,9 +66,9 @@ func TestHighlightedTextFileFillsThePreviewColumn(t *testing.T) {
 
 	screen := previewed(t, filepath.Join(home, "docs"), "first line", tab)
 
-	// ~ lists docs, docs lists plan.txt, the preview column shows its line.
-	if got := firstRow(t, screen); len(got) != 3 || got[1] != "plan.txt" || got[2] != "first line" {
-		t.Fatalf("columns %q, want docs, plan.txt, first line; screen:\n%s", got, screen)
+	// ~ lists docs, docs lists plan.txt, the preview column is labelled.
+	if got := firstRow(t, screen); len(got) != 3 || got[1] != "plan.txt" || got[2] != "preview" {
+		t.Fatalf("columns %q, want docs, plan.txt, preview; screen:\n%s", got, screen)
 	}
 }
 
@@ -144,5 +145,34 @@ func TestPinDoesNothingOnAFile(t *testing.T) {
 
 	if _, err := os.Stat(stateFile(home, "pins")); !os.IsNotExist(err) {
 		t.Fatalf("pins file written for a file: %v", err)
+	}
+}
+
+func TestPreviewLabelSitsAboveAFilePreviewAndNeverOverAFolder(t *testing.T) {
+	for _, view := range []struct {
+		name string
+		keys []tea.KeyMsg
+	}{{"list", nil}, {"columns", []tea.KeyMsg{tab}}} {
+		t.Run(view.name, func(t *testing.T) {
+			lipgloss.SetColorProfile(termenv.ANSI)
+			t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+			home := newHome(t, "docs/sub")
+			writeFile(t, filepath.Join(home, "docs"), "plan.txt", "first line\n")
+
+			onFolder := previewed(t, filepath.Join(home, "docs"), "sub", view.keys...)
+			onFile := previewed(t, filepath.Join(home, "docs"), "first line", append(view.keys, down)...)
+
+			if strings.Contains(onFolder, "preview") {
+				t.Fatalf("label over a folder:\n%s", onFolder)
+			}
+			if !strings.Contains(onFile, "\x1b[2mpreview\x1b[0m") {
+				t.Fatalf("want a dim preview label: %q", onFile)
+			}
+			lines := strings.Split(ansi.Strip(onFile), "\n")
+			at := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, "│ preview") })
+			if at < 0 || at+1 == len(lines) || !strings.HasSuffix(lines[at+1], "│ first line") {
+				t.Fatalf("want the label at the top of the preview column, the text under it:\n%s", ansi.Strip(onFile))
+			}
+		})
 	}
 }

@@ -86,3 +86,12 @@ func (p preview) cells(rows int) []string {
 	}
 	return p.lines[:min(rows, len(p.lines))]
 }
+
+// pane is the preview column beside the list, rows at most: a dim
+// "preview" label over cells, and nothing until the file is read.
+func (p preview) pane(rows int) []string {
+	if p.lines == nil && p.notice == "" {
+		return nil
+	}
+	return append([]string{dim.Render("preview")}, p.cells(max(rows-1, 0))...)
+}

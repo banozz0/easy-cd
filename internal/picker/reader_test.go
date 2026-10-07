@@ -151,3 +151,14 @@ func TestReaderShowsALargeSourceFileUncoloured(t *testing.T) {
 		t.Fatalf("want package main uncoloured: %q", screen)
 	}
 }
+
+func TestReaderShowsNoPreviewLabel(t *testing.T) {
+	home := newHome(t, "docs")
+	writeFile(t, filepath.Join(home, "docs"), "plan.txt", "first line\n")
+
+	screen := inReader(t, filepath.Join(home, "docs"), "docs › plan.txt", "first line")
+
+	if strings.Contains(screen, "preview") {
+		t.Fatalf("the reader shows the preview label:\n%s", screen)
+	}
+}

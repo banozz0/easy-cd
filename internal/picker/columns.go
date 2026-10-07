@@ -78,7 +78,7 @@ const colSep = " │ "
 func (m model) columnsView(rows int) string {
 	cols := trail(m.dir, rows)
 	weight := len(cols) + 4
-	cols = append(cols, column{weight: weight}, column{m.preview.cells(rows), weight})
+	cols = append(cols, column{weight: weight}, column{m.preview.pane(rows), weight})
 	cols[len(cols)-2].cells = m.window(rows, widths(cols, m.width)[len(cols)-2])
 	return sideBySide(cols, m.width)
 }

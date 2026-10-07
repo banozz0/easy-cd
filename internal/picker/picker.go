@@ -394,7 +394,7 @@ func (m model) View() string {
 	case m.columns && m.query == "":
 		b.WriteString(m.columnsView(rows))
 	case m.preview.path != "":
-		cols := []column{{weight: 2}, {m.preview.cells(rows), 3}}
+		cols := []column{{weight: 2}, {m.preview.pane(rows), 3}}
 		cols[0].cells = m.window(rows, widths(cols, m.width)[0])
 		b.WriteString(sideBySide(cols, m.width))
 	default:
