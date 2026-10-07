@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -116,7 +117,8 @@ func TestNarrowListCutsRowsToTheWidthAndKeepsTheBadge(t *testing.T) {
 		}
 	}
 	// The path is shortened from the left: the folder's name and the badge stay.
-	if r := rows(screen)[2]; !strings.HasSuffix(r, "/the-repo") || !strings.Contains(screen, "feature-x") {
-		t.Fatalf("result row %q lost its name, or the branch badge was cut, screen:\n%s", r, screen)
+	repo := func(r string) bool { return strings.HasSuffix(r, "/the-repo") }
+	if !slices.ContainsFunc(rows(screen), repo) || !strings.Contains(screen, "feature-x") {
+		t.Fatalf("result row lost its name, or the branch badge was cut, screen:\n%s", screen)
 	}
 }

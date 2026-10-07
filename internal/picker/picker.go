@@ -406,8 +406,10 @@ func (m model) View() string {
 	return b.String()
 }
 
-// help is the key lines under the list: what each key does where you are,
-// wrapped between keys onto as many lines as the width needs.
+// help is the key lines under the list, a blank row above them: what each
+// key does where you are, wrapped between items onto as many lines as the
+// width needs. A key sits one space from its word and three from the next
+// item, so the items read apart.
 func (m model) help() string {
 	keys := []string{"↑↓", "move", "→", "in", "←", "up", "⏎", "cd", "1-9", "jump", "^P", "pin", "⇧←", "home", "type", "search", "tab", "columns", "esc", "quit"}
 	switch {
@@ -417,15 +419,19 @@ func (m model) help() string {
 		keys[slices.Index(keys, "columns")] = "list"
 	}
 	var b strings.Builder
-	line, w := "", 0
+	b.WriteString("\n")
+	line := ""
 	for i := 0; i < len(keys); i += 2 {
-		pair := "  " + key.Render(keys[i]) + " " + dim.Render(keys[i+1])
-		pw := ansi.StringWidth(pair)
-		if w > 0 && m.width > 0 && w+pw > m.width {
+		item := key.Render(keys[i]) + " " + dim.Render(keys[i+1])
+		if line != "" && m.width > 0 && ansi.StringWidth(line+"   "+item) > m.width {
 			b.WriteString(m.fit(line) + "\n")
-			line, w = "", 0
+			line = ""
 		}
-		line, w = line+pair, w+pw
+		if line == "" {
+			line = "  " + item
+		} else {
+			line += "   " + item
+		}
 	}
 	b.WriteString(m.fit(line) + "\n")
 	return b.String()
@@ -517,10 +523,11 @@ func (r match) render() string {
 }
 
 // header is the lines above the folder list: breadcrumb, then the search
-// text or the jump slots, then any notice.
+// text or the jump slots, then any notice, with a blank row after the
+// breadcrumb and another before the list.
 func (m model) header() string {
 	var b strings.Builder
-	b.WriteString("  " + breadcrumb(m.dir) + "\n")
+	b.WriteString("  " + breadcrumb(m.dir) + "\n\n")
 	if m.query != "" {
 		b.WriteString("  search › " + m.query + "\n")
 	} else if slots := m.slots(); slots == [numSlots]string{} {
@@ -532,6 +539,7 @@ func (m model) header() string {
 	if m.notice != "" {
 		b.WriteString("  " + m.notice + "\n")
 	}
+	b.WriteString("\n")
 	return b.String()
 }
 

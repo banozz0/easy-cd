@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -359,5 +360,47 @@ func TestFreshStartShowsWherePinsAndRecentsWillBe(t *testing.T) {
 
 	if strings.Contains(screen, slotsHint) {
 		t.Fatalf("hint still shows beside a pin:\n%s", screen)
+	}
+}
+
+func TestBlankRowsSetTheJumpSlotsListAndKeyHelpApart(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		pin   bool
+		keys  []tea.KeyMsg
+		block string // the line between the breadcrumb and the list
+	}{
+		{"list", true, nil, "★ pinned  1 a"},
+		{"columns", true, []tea.KeyMsg{tab}, "★ pinned  1 a"},
+		{"fresh start", false, nil, slotsHint},
+		{"search", true, typed("b"), "search › b"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := newHome(t, "a", "b")
+			if tc.pin {
+				run(t, home, pin, esc)
+			}
+			tm := newPicker(t, home)
+			for _, k := range tc.keys {
+				tm.Send(k)
+			}
+			waitFor(t, tm, tc.block)
+			tm.Send(enter) // quits on the highlighted folder, the view as it stood
+			screen := ansi.Strip(tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second)).View())
+			lines := strings.Split(screen, "\n")
+			first := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, "📁") })
+			help := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, "↑↓ move") })
+			blank := func(i int) bool { return i >= 0 && i < len(lines) && strings.TrimSpace(lines[i]) == "" }
+			switch {
+			case !strings.Contains(lines[0], "~") || !blank(1) || !strings.Contains(lines[2], tc.block):
+				t.Fatalf("want the breadcrumb, a blank row, then %q:\n%s", tc.block, screen)
+			case first < 0 || !blank(first-1) || blank(first-2):
+				t.Fatalf("want one blank row above the list:\n%s", screen)
+			case help < 0 || !blank(help-1) || blank(help-2):
+				t.Fatalf("want one blank row above the key help:\n%s", screen)
+			case !strings.Contains(lines[help], "↑↓ move   →"):
+				t.Fatalf("want the help items wide apart, key and word one space apart: %q", lines[help])
+			}
+		})
 	}
 }
