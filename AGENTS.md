@@ -1,8 +1,9 @@
 # easy-cd — agent brief
 
-**Private until the v1 release, then public** (MIT). `ecd` is a terminal folder picker: favourites and recent folders on
-top, arrow keys to walk, type to search everywhere, Tab for Finder-style columns, Enter to
-cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fish.
+**Public** (MIT), released as v1.0.0 through the banozz0/homebrew-tap cask. `ecd` is a
+terminal folder picker: favourites and recent folders on top, arrow keys to walk, type to
+search everywhere, Tab for Finder-style columns, Enter to cd. Go + Charm's Bubble Tea /
+Lip Gloss, one binary, macOS + Linux, zsh/bash/fish.
 
 - Shaping record and every decision: `easy-cd/IDEA.md` in the incubator repo.
 - Spec, dashboard and journal: vault `Projects/Easy CD/`. Read `ecd v1 spec.md` before
@@ -16,6 +17,7 @@ cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fis
   default app and lands in its folder); row badges (dimmed age, async git branch and dirty dot);
   bash and fish init; final polish (Catppuccin Mocha theme, emoji icons, selection bar, key
   help, rows cut to the width keeping badges, warm open under 100 ms tested through a pty).
+  Release: goreleaser run locally (.goreleaser.yaml), never GitHub Actions.
 - Code: `cmd/ecd` (binary, shell init), `internal/picker` (Bubble Tea model). Test with
   `go test ./...`; the shell seam runs zsh, /bin/bash and fish.
 
@@ -27,7 +29,7 @@ cd. Go + Charm's Bubble Tea / Lip Gloss, one binary, macOS + Linux, zsh/bash/fis
   1–9 (empty search only), Ctrl+P (pin) and Shift+← (home). Never bind a bare letter.
 - **Folder index only.** The cache holds folder names, never file contents; a file is read
   when highlighted, in full only in the reader.
-- **Goes public at release:** nothing from Sven's machine in git: no real paths, folder names, visit
+- **Public repo:** nothing from Sven's machine in git: no real paths, folder names, visit
   logs or screenshots of his home. Test fixtures build their own temp trees.
 
 ## Agent skills
